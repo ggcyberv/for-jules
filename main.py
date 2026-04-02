@@ -231,6 +231,25 @@ class GameController:
             if event.key == pygame.K_SPACE:
                 res = CombatSimulator.simulate_round(self.state.party.members, self.active_combat["enemies"], self.active_combat["turn"], self.current_tactic, self.current_formation, self.current_priority)
                 self.combat_log.extend(res["log"])
+
+                # Add visual effects for hits
+                for line in res["log"]:
+                    if "attacks" in line:
+                        target_name = line.split("attacks ")[1].split(" for")[0]
+                        fx_pos = (700, 100) # Default enemy area
+                        if "Enemy" in line: fx_pos = (100, 100) # Party area
+
+                        # Find actual position
+                        if "Enemy" in line:
+                            for idx, m in enumerate(self.state.party.members):
+                                if m.name in target_name: fx_pos = (100, 100 + idx * 80); break
+                        else:
+                            for idx, e in enumerate(self.active_combat["enemies"]):
+                                if e.name in target_name: fx_pos = (700, 100 + idx * 80); break
+
+                        fx_type = "slash" if "attacks" in line else "spark"
+                        self.combat_view.effects.append((fx_type, fx_pos, 5))
+
                 self.active_combat["turn"] += 1
 
                 # Check outcome

@@ -9,6 +9,18 @@ class CombatView:
         self.font = pygame.font.SysFont("Arial", 14)
         self.large_font = pygame.font.SysFont("Arial", 20)
         self.button_rects: List[pygame.Rect] = []
+        self.sprites = self._load_sprites()
+        self.effects = []
+
+    def _load_sprites(self):
+        sprites = {}
+        import os
+        path = "data/sprites"
+        for f in os.listdir(path):
+            if f.endswith(".png"):
+                name = f.split(".")[0]
+                sprites[name] = pygame.image.load(os.path.join(path, f)).convert_alpha()
+        return sprites
 
     def render(self, screen: pygame.Surface, party: List[Character], enemies: List[Character], log: List[str], turn: int, summary: Optional[str] = None):
         screen.fill((20, 10, 10))
@@ -17,7 +29,9 @@ class CombatView:
         px, py = 100, 100
         for char in party:
             color = (0, 255, 0) if char.hp > 0 else (100, 0, 0)
-            pygame.draw.circle(screen, color, (px, py), 20)
+            sprite = self.sprites.get(char.name.lower(), self.sprites.get("knight"))
+            if char.hp <= 0: sprite.set_alpha(100)
+            screen.blit(pygame.transform.scale(sprite, (48, 48)), (px - 24, py - 24))
             hp_text = f"{char.name}: {char.hp}/{char.max_hp}"
             surf = self.font.render(hp_text, True, (255, 255, 255))
             screen.blit(surf, (px - 40, py + 25))
@@ -27,11 +41,21 @@ class CombatView:
         ex, ey = 700, 100
         for char in enemies:
             color = (255, 0, 0) if char.hp > 0 else (100, 0, 0)
-            pygame.draw.circle(screen, color, (ex, ey), 20)
+            sprite = self.sprites.get(char.name.lower(), self.sprites.get("orc"))
+            if char.hp <= 0: sprite.set_alpha(100)
+            screen.blit(pygame.transform.scale(sprite, (48, 48)), (ex - 24, ey - 24))
             hp_text = f"{char.name}: {char.hp}"
             surf = self.font.render(hp_text, True, (255, 255, 255))
             screen.blit(surf, (ex - 40, ey + 25))
             ey += 80
+
+        # Draw Effects
+        new_effects = []
+        for fx_type, fx_pos, fx_timer in self.effects:
+            sprite = self.sprites.get(fx_type, self.sprites.get("spark"))
+            screen.blit(pygame.transform.scale(sprite, (64, 64)), (fx_pos[0] - 32, fx_pos[1] - 32))
+            if fx_timer > 1: new_effects.append((fx_type, fx_pos, fx_timer - 1))
+        self.effects = new_effects
 
         # Draw Log
         ly = 300
