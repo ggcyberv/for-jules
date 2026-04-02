@@ -22,9 +22,17 @@ class Character:
     xp: int = 0
     hp: int = 100
     max_hp: int = 100
+
+    # Core Stats
     attack: int = 10
     defense: int = 10
     speed: int = 5
+
+    # New Combat Attributes
+    accuracy: int = 80 # Percentage
+    critical_chance: int = 5 # Percentage
+    luck: int = 0
+
     skills: List[Skill] = field(default_factory=list)
     relationships: Dict[str, int] = field(default_factory=dict)
     afflictions: List[Affliction] = field(default_factory=list)
@@ -51,6 +59,11 @@ class Character:
         weapon_bonus = self.equipment.main_hand.speed_bonus if self.equipment.main_hand else 0
         return max(1, self.speed + weapon_bonus - penalty - armor_penalty)
 
+    @property
+    def effective_accuracy(self) -> int:
+        bonus = self.equipment.main_hand.accuracy_bonus if hasattr(self.equipment.main_hand, 'accuracy_bonus') else 0
+        return self.accuracy + bonus + self.luck
+
     def gain_xp(self, amount: int):
         self.xp += amount
         if self.xp >= self.level * 100:
@@ -62,6 +75,5 @@ class Character:
         self.max_hp += 10
         self.hp = self.max_hp
         self.attribute_points += 2
-        # Auto-unlock skills? (Simplified)
         if self.level == 3:
             self.skills.append(Skill("Power Strike", "A heavy blow dealing massive damage."))

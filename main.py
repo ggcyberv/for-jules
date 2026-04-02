@@ -2,6 +2,7 @@ import pygame
 import sys
 import secrets
 import os
+import random
 from typing import Optional, List, Tuple
 from engine.game_state import GameState
 from engine.rng_manager import RNGManager
@@ -62,43 +63,44 @@ class GameController:
         event_bus.subscribe("random_encounter", self.on_random_encounter)
         event_bus.subscribe("enter_location", self.on_enter_location)
         event_bus.subscribe("trigger_story_event", self.on_trigger_story_event)
+        event_bus.subscribe("request_generation", self.check_chunks)
 
+        # Ensure starting area is fully loaded and discovered
         self.check_chunks(0, 0)
+        EventTrigger.check_enter_hex(0, 0)
 
     def setup_game(self):
         seed = secrets.randbits(32)
-        settings = {"world_size": (15, 10), "danger_level": 0.6}
+        settings = {"danger_level": 0.6}
         self.world_gen = WorldGenerator(seed, settings)
         grid = HexGrid(chunk_size=10)
-        self.world_gen.generate_chunk(grid, 0, 0)
 
-        hero1 = Character("Alaric", attack=15, defense=10, speed=6, backstory="A disgraced knight seeking redemption.")
-        hero2 = Character("Elara", attack=10, defense=12, speed=5, backstory="A nomadic healer from the eastern plains.")
+        hero1 = Character("Alaric", attack=15, defense=10, speed=6, accuracy=85, critical_chance=10, backstory="A disgraced knight seeking redemption.")
+        hero2 = Character("Elara", attack=10, defense=12, speed=5, accuracy=90, critical_chance=5, backstory="A nomadic healer from the eastern plains.")
         party = Party(members=[hero1, hero2])
 
         state = GameState()
         state.initialize(grid, party, seed, self.world_gen.locations)
-        grid.get_tile(0, 0).discovered = True
-
-        from world.faction_system import Faction
-        state.faction_system.register_faction(Faction("citizens", "Riverfall Citizens", "Local townsfolk."))
         return state
 
     def check_chunks(self, q, r):
-        for dq in [-1, 0, 1]:
-            for dr in [-1, 0, 1]:
-                cq, cr = self.state.world.get_chunk_coords(q + dq * 5, r + dr * 5)
+        # Proactively generate chunks in a larger area
+        for dq in range(-2, 3):
+            for dr in range(-2, 3):
+                target_q = q + dq * 10
+                target_r = r + dr * 10
+                cq, cr = self.state.world.get_chunk_coords(target_q, target_r)
                 self.world_gen.generate_chunk(self.state.world, cq, cr)
 
     def on_hex_discovered(self, q, r):
         self.logs.append(f"Discovered hex at ({q}, {r})")
-        self.check_chunks(q, r)
 
     def on_random_encounter(self, q, r):
-        self.logs.append(f"Encounter! (Tactic: {self.current_tactic.value})")
-        enemies = [Character("Goblin", hp=30, attack=8, defense=5, speed=4)]
-        self.active_combat = {"enemies": enemies, "turn": 1}
-        self.combat_log = ["A wild Goblin appears!"]
+        enemy_id = "orc" if random.random() < 0.5 else "skeleton"
+        enemy = CombatSimulator.load_enemy(enemy_id)
+        self.logs.append(f"Encounter! A {enemy.name} blocks your path.")
+        self.active_combat = {"enemies": [enemy], "turn": 1}
+        self.combat_log = [f"Battle against {enemy.name} initiated!"]
 
     def on_enter_location(self, poi_id):
         loc = self.state.locations.get(poi_id)
@@ -150,12 +152,18 @@ class GameController:
         if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
             mx, my = event.pos
             tq, tr = self.overworld_view.pixel_to_hex(mx, my)
+
+            # Ensure the chunk we clicked is generated
+            self.check_chunks(tq, tr)
+
             dist = self.state.world.distance(self.state.party.q, self.state.party.r, tq, tr)
             if dist == 1:
                 tile = self.state.world.get_tile(tq, tr)
                 if tile and tile.terrain_type != "water":
                     if self.state.party.move_to(tq, tr, int(tile.movement_cost)):
+                        # Reveal surroundings on move
                         EventTrigger.check_enter_hex(tq, tr)
+
         if event.type == pygame.KEYDOWN:
             if event.key == pygame.K_SPACE:
                 self.state.advance_turn()
@@ -221,13 +229,18 @@ class GameController:
                     self.combat_log.extend(int_log)
         elif event.type == pygame.KEYDOWN:
             if event.key == pygame.K_SPACE:
-                # Simulate a full round
-                res = CombatSimulator.simulate_battle(self.state.party.members, self.active_combat["enemies"], self.current_tactic, self.current_formation, self.current_priority)
+                res = CombatSimulator.simulate_round(self.state.party.members, self.active_combat["enemies"], self.active_combat["turn"], self.current_tactic, self.current_formation, self.current_priority)
                 self.combat_log.extend(res["log"])
-                if any(e.hp > 0 for e in self.active_combat["enemies"]) == False:
-                    self.logs.append("Combat Victory!")
+                self.active_combat["turn"] += 1
+
+                # Check outcome
+                if not any(e.hp > 0 for e in self.active_combat["enemies"]):
+                    xp = len(self.active_combat["enemies"]) * 20
+                    for m in self.state.party.members:
+                        if m.hp > 0: m.gain_xp(xp)
+                    self.logs.append(f"Combat Victory! Gained {xp} XP.")
                     self.active_combat = None
-                elif any(m.hp > 0 for m in self.state.party.members) == False:
+                elif not any(m.hp > 0 for m in self.state.party.members):
                     self.logs.append("Party Wiped Out...")
                     self.active_combat = None
 
@@ -249,7 +262,8 @@ class GameController:
                 item = self.active_town.inventory[0]
                 self.on_trigger_story_event("market_buy_" + self.active_town.poi_id, title="Market", desc=f"Buy {item.name} for {item.value} gold?", choices=[{"text": f"Buy {item.name}", "outcome": {"type": "buy", "item": item, "cost": item.value, "loc": self.active_town}}, {"text": "Leave", "outcome": {"type": "message", "text": "Browsing finished."}}])
             else: self.logs.append("Market is empty.")
-        else: self.logs.append(f"Visited {node.name}. (Service not implemented)")
+        else:
+            self.logs.append(f"Visited {node.name}. (Service not implemented)")
 
     def run(self):
         while True:

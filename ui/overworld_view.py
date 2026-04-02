@@ -14,7 +14,6 @@ class OverworldView:
         self.camera_offset = [0, 0]
 
     def hex_to_pixel(self, q: int, r: int) -> Tuple[float, float]:
-        # Pointy-top hex math
         x = self.hex_size * (3/2 * q)
         y = self.hex_size * (math.sqrt(3)/2 * q + math.sqrt(3) * r)
         return x + self.camera_offset[0], y + self.camera_offset[1]
@@ -22,11 +21,8 @@ class OverworldView:
     def pixel_to_hex(self, px: float, py: float) -> Tuple[int, int]:
         px -= self.camera_offset[0]
         py -= self.camera_offset[1]
-
         q = (2/3 * px) / self.hex_size
         r = (-1/3 * px + math.sqrt(3)/3 * py) / self.hex_size
-
-        # Cube rounding
         x, y, z = q, r, -q - r
         rx, ry, rz = round(x), round(y), round(z)
         dx, dy, dz = abs(rx - x), abs(ry - y), abs(rz - z)
@@ -36,12 +32,8 @@ class OverworldView:
         return int(rx), int(ry)
 
     def update_camera(self, party_pos: Tuple[int, int]):
-        # Calculate ideal pixel position of party
-        # Without offset
         tx = self.hex_size * (3/2 * party_pos[0])
         ty = self.hex_size * (math.sqrt(3)/2 * party_pos[0] + math.sqrt(3) * party_pos[1])
-
-        # Offset to center on screen
         self.camera_offset[0] = self.screen_width // 2 - tx
         self.camera_offset[1] = self.screen_height // 2 - ty
 
@@ -51,8 +43,6 @@ class OverworldView:
 
         for (q, r), tile in grid.tiles.items():
             px, py = self.hex_to_pixel(q, r)
-
-            # Simple culling
             if px < -50 or px > self.screen_width + 50 or py < -50 or py > self.screen_height + 50:
                 continue
 
@@ -63,20 +53,16 @@ class OverworldView:
 
             points = []
             for i in range(6):
-                angle_deg = 60 * i
-                angle_rad = math.pi / 180 * angle_deg
+                angle_rad = math.pi / 180 * (60 * i)
                 points.append((px + self.hex_size * math.cos(angle_rad),
                              py + self.hex_size * math.sin(angle_rad)))
 
             pygame.draw.polygon(screen, color, points)
-
-            # Faction Border logic
             border_color = (150, 150, 150)
             if tile.faction_influence == "citizens": border_color = (100, 100, 255)
             elif tile.faction_influence == "bandits": border_color = (255, 100, 100)
             pygame.draw.polygon(screen, border_color, points, 2)
 
-            # Draw POI
             if tile.poi_id:
                 poi_color = (255, 255, 0)
                 if "dungeon" in tile.poi_id or "loc" in tile.poi_id: poi_color = (200, 50, 50)
@@ -115,7 +101,7 @@ class OverworldView:
         hint_surf = self.font.render(hint_text, True, (150, 150, 150))
         screen.blit(hint_surf, (500, 10))
 
-        # Tooltip handling
+        # Improved Tooltip handling
         mx, my = pygame.mouse.get_pos()
         tq, tr = self.pixel_to_hex(mx, my)
         tile = grid.get_tile(tq, tr)
@@ -128,6 +114,9 @@ class OverworldView:
         surf = self.font.render(text, True, (255, 255, 255))
         padding = 5
         rect = pygame.Rect(x + 10, y + 10, surf.get_width() + padding * 2, surf.get_height() + padding * 2)
+        # Keep tooltip on screen
+        if rect.right > self.screen_width: rect.right = x - 10
+        if rect.bottom > self.screen_height: rect.bottom = y - 10
         pygame.draw.rect(screen, (0, 0, 0), rect)
         pygame.draw.rect(screen, (255, 255, 255), rect, 1)
         screen.blit(surf, (rect.x + padding, rect.y + padding))

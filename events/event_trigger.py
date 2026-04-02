@@ -6,20 +6,30 @@ class EventTrigger:
     @staticmethod
     def check_enter_hex(q: int, r: int):
         state = GameState()
+
+        # Signal to generate chunks around current position
+        event_bus.publish("request_generation", q=q, r=r)
+
+        # Discover tiles in a small radius (2 hexes)
+        for dq in range(-2, 3):
+            for dr in range(max(-2, -dq - 2), min(2, -dq + 2) + 1):
+                nq, nr = q + dq, r + dr
+                ntile = state.world.get_tile(nq, nr)
+                if ntile:
+                    if not ntile.discovered:
+                        ntile.discovered = True
+                    if dq == 0 and dr == 0:
+                        # Re-publish discovery for the specific tile we just entered
+                        pass
+
         tile = state.world.get_tile(q, r)
+        if not tile: return
 
-        # In Milestone 1, we simulate a random encounter chance
-        if tile.danger_rating > 0.85: # Reduced chance for demo
+        if tile.danger_rating > 0.85:
             event_bus.publish("random_encounter", q=q, r=r)
-
-        # Check for POIs or specific hex discovery
-        if not tile.discovered:
-            tile.discovered = True
-            event_bus.publish("hex_discovered", q=q, r=r)
 
         if tile.poi_id:
             event_bus.publish("enter_location", poi_id=tile.poi_id)
 
-        # Example story event on specific hex
         if q == 2 and r == 2:
             event_bus.publish("trigger_story_event", event_id="crypt_whispers_01")

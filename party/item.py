@@ -13,11 +13,14 @@ class Item:
 class Weapon(Item):
     attack_bonus: int = 0
     speed_bonus: int = 0
+    accuracy_bonus: int = 0
+    crit_chance_bonus: int = 0
 
 @dataclass
 class Armor(Item):
     defense_bonus: int = 0
     speed_penalty: int = 0
+    luck_bonus: int = 0
 
 @dataclass
 class Equipment:

@@ -14,18 +14,18 @@ class PartyView:
         self.small_font = pygame.font.SysFont("Arial", 12)
         self.large_font = pygame.font.SysFont("Arial", 22)
         self.char_idx = 0
-        self.tab = "party" # "party", "lore"
+        self.tab = "party" # "party", "lore", "logs"
         self.attr_rects = []
 
     def render(self, screen: pygame.Surface, party: Party):
         pygame.draw.rect(screen, (30, 40, 50), self.rect)
         pygame.draw.rect(screen, (200, 200, 200), self.rect, 2)
 
-        # Tab headers (Main Categories)
-        cat_tabs = ["Party", "Lore & Secrets"]
+        cat_tabs = ["Party", "Lore & Secrets", "Combat History"]
         for i, cat in enumerate(cat_tabs):
-            t_rect = pygame.Rect(self.rect.x + 20 + i * 130, self.rect.y - 30, 120, 30)
-            t_color = (100, 120, 140) if self.tab == cat.lower().split()[0] else (40, 50, 60)
+            tab_id = cat.lower().split()[0]
+            t_rect = pygame.Rect(self.rect.x + 20 + i * 140, self.rect.y - 30, 130, 30)
+            t_color = (100, 120, 140) if self.tab == tab_id else (40, 50, 60)
             pygame.draw.rect(screen, t_color, t_rect)
             pygame.draw.rect(screen, (255, 255, 255), t_rect, 1)
             t_surf = self.font.render(cat, True, (255, 255, 255))
@@ -33,8 +33,10 @@ class PartyView:
 
         if self.tab == "party":
             self._render_party(screen, party)
-        else:
+        elif self.tab == "lore":
             self._render_lore(screen)
+        elif self.tab == "combat":
+            self._render_logs(screen, party)
 
     def _render_party(self, screen, party):
         for i, char in enumerate(party.members):
@@ -52,14 +54,20 @@ class PartyView:
         title_surf = self.large_font.render(f"{char.name} (Level {char.level})", True, (255, 215, 0))
         screen.blit(title_surf, (self.rect.x + 20, detail_y))
 
-        stats = [("Attack", char.attack, char.effective_attack), ("Defense", char.defense, char.effective_defense), ("Speed", char.speed, char.effective_speed)]
+        stats = [
+            ("Attack", char.attack, char.effective_attack),
+            ("Defense", char.defense, char.effective_defense),
+            ("Speed", char.speed, char.effective_speed),
+            ("Accuracy", char.accuracy, char.effective_accuracy),
+            ("Critical %", char.critical_chance, char.critical_chance)
+        ]
         self.attr_rects = []
         for i, (name, base, eff) in enumerate(stats):
             text = f"{name}: {eff} (Base: {base})"
             surf = self.font.render(text, True, (255, 255, 255))
-            screen.blit(surf, (self.rect.x + 20, detail_y + 40 + i * 30))
-            if char.attribute_points > 0:
-                plus_rect = pygame.Rect(self.rect.x + 250, detail_y + 40 + i * 30, 20, 20)
+            screen.blit(surf, (self.rect.x + 20, detail_y + 40 + i * 25))
+            if char.attribute_points > 0 and i < 3: # Can only increase core stats
+                plus_rect = pygame.Rect(self.rect.x + 250, detail_y + 40 + i * 25, 20, 20)
                 pygame.draw.rect(screen, (0, 150, 0), plus_rect)
                 self.attr_rects.append((plus_rect, name.lower()))
 
@@ -73,10 +81,9 @@ class PartyView:
             else: lines.append(curr); curr = w + " "
         lines.append(curr)
         for i, l in enumerate(lines[:5]):
-            surf = self.small_font.render(l, True, (200, 200, 200))
-            screen.blit(surf, (mid_x, detail_y + 30 + i * 15))
+            surf = self.small_font.render(l, True, (200, 200, 200)); screen.blit(surf, (mid_x, detail_y + 30 + i * 15))
 
-        skill_y = detail_y + 120
+        skill_y = detail_y + 130
         sk_title = self.font.render("Skills:", True, (200, 200, 255))
         screen.blit(sk_title, (mid_x, skill_y))
         for i, skill in enumerate(char.skills[:4]):
@@ -92,38 +99,46 @@ class PartyView:
             surf = self.font.render(f"{slot}:", True, (150, 150, 150)); screen.blit(surf, (eq_x, detail_y + 30 + i * 40))
             name_surf = self.small_font.render(item_name, True, (255, 255, 255)); screen.blit(name_surf, (eq_x, detail_y + 50 + i * 40))
 
-        inv_y = self.rect.y + 350
+        inv_y = self.rect.y + 380
         inv_title = self.font.render(f"Party Inventory (Gold: {party.gold}, Food: {party.food}):", True, (200, 255, 200))
         screen.blit(inv_title, (self.rect.x + 20, inv_y))
-        for i, item in enumerate(party.inventory[:12]):
+        for i, item in enumerate(party.inventory[:9]):
             ix = self.rect.x + 20 + (i % 3) * 230; iy = inv_y + 30 + (i // 3) * 20
             surf = self.small_font.render(f"- {str(item.name if hasattr(item, 'name') else item)}", True, (200, 200, 200)); screen.blit(surf, (ix, iy))
 
-        footer = "1-6: Switch | S: Save | L: Load | TAB: Lore | ESC/I: Close"
+        footer = "1-6: Switch | TAB: Tabs | ESC/I: Close"
         f_surf = self.small_font.render(footer, True, (150, 150, 150)); screen.blit(f_surf, (self.rect.x + 20, self.rect.bottom - 30))
 
     def _render_lore(self, screen):
         state = GameState()
         title = self.large_font.render("Lore & Discovered Secrets", True, (255, 215, 0))
         screen.blit(title, (self.rect.x + 20, self.rect.y + 20))
-
         y = self.rect.y + 70
         if not state.lore_manager.discovered_fragments:
-            surf = self.font.render("No lore fragments discovered yet.", True, (150, 150, 150))
-            screen.blit(surf, (self.rect.x + 20, y))
+            surf = self.font.render("No lore fragments discovered yet.", True, (150, 150, 150)); screen.blit(surf, (self.rect.x + 20, y))
         else:
             for frag in state.lore_manager.discovered_fragments:
-                f_title = self.font.render(frag.title, True, (200, 200, 255))
-                screen.blit(f_title, (self.rect.x + 20, y))
-                y += 25
-                f_content = self.small_font.render(frag.content, True, (220, 220, 220))
-                screen.blit(f_content, (self.rect.x + 40, y))
-                y += 30
+                f_title = self.font.render(frag.title, True, (200, 200, 255)); screen.blit(f_title, (self.rect.x + 20, y)); y += 25
+                f_content = self.small_font.render(frag.content, True, (220, 220, 220)); screen.blit(f_content, (self.rect.x + 40, y)); y += 30
+
+    def _render_logs(self, screen, party):
+        char = party.members[self.char_idx] if party.members else None
+        title = self.large_font.render(f"Combat History: {char.name if char else ''}", True, (255, 215, 0))
+        screen.blit(title, (self.rect.x + 20, self.rect.y + 20))
+        y = self.rect.y + 70
+        if not char or not char.combat_log:
+            surf = self.font.render("No combat entries yet.", True, (150, 150, 150)); screen.blit(surf, (self.rect.x + 20, y))
+        else:
+            for entry in char.combat_log[-12:]:
+                lsurf = self.small_font.render(f"> {entry}", True, (200, 200, 200))
+                screen.blit(lsurf, (self.rect.x + 20, y))
+                y += 20
 
     def handle_keydown(self, key):
         if key == pygame.K_TAB:
-            self.tab = "lore" if self.tab == "party" else "party"
-        elif self.tab == "party":
+            tabs = ["party", "lore", "combat"]
+            self.tab = tabs[(tabs.index(self.tab) + 1) % len(tabs)]
+        elif self.tab in ["party", "combat"]:
             if key == pygame.K_1: self.char_idx = 0
             elif key == pygame.K_2: self.char_idx = 1
             elif key == pygame.K_3: self.char_idx = 2
