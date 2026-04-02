@@ -2,6 +2,12 @@ from dataclasses import dataclass, field
 from typing import List, Dict, Optional
 
 @dataclass
+class Affliction:
+    name: str
+    stat_penalty: Dict[str, int]
+    is_permanent: bool = False
+
+@dataclass
 class Character:
     name: str
     level: int = 1
@@ -13,7 +19,18 @@ class Character:
     speed: int = 5
     skills: List[str] = field(default_factory=list)
     inventory: List[str] = field(default_factory=list)
-    relationships: Dict[str, int] = field(default_factory=dict) # Character Name -> Reputation Score
+    relationships: Dict[str, int] = field(default_factory=dict)
+    afflictions: List[Affliction] = field(default_factory=list)
+
+    @property
+    def effective_attack(self) -> int:
+        penalty = sum(a.stat_penalty.get("attack", 0) for a in self.afflictions)
+        return max(1, self.attack - penalty)
+
+    @property
+    def effective_defense(self) -> int:
+        penalty = sum(a.stat_penalty.get("defense", 0) for a in self.afflictions)
+        return max(1, self.defense - penalty)
 
     def gain_xp(self, amount: int):
         self.xp += amount

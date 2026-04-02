@@ -39,7 +39,7 @@ class OverworldView:
             px, py = self.hex_to_pixel(q, r)
 
             # Draw hex background
-            color = (80, 80, 80) if not tile.discovered else (50, 150, 50)
+            color = (60, 60, 60) if not tile.discovered else (50, 150, 50)
             if tile.terrain_type == "mountain": color = (100, 100, 100)
             elif tile.terrain_type == "forest": color = (34, 139, 34)
             elif tile.terrain_type == "water": color = (0, 0, 255)
@@ -52,7 +52,13 @@ class OverworldView:
                              py + self.hex_size * math.sin(angle_rad)))
 
             pygame.draw.polygon(screen, color, points)
-            pygame.draw.polygon(screen, (200, 200, 200), points, 1) # Border
+
+            # Faction Border logic
+            border_color = (150, 150, 150)
+            if tile.faction_influence == "citizens": border_color = (100, 100, 255)
+            elif tile.faction_influence == "bandits": border_color = (255, 100, 100)
+
+            pygame.draw.polygon(screen, border_color, points, 2)
 
             # Draw POI
             if tile.poi_id:

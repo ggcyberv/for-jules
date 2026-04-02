@@ -1,7 +1,7 @@
 from typing import Dict, Any, List
 from world.hex_grid import HexGrid
 from engine.rng_manager import RNGManager
-from world.location import Town, Dungeon
+from world.location import Town, Dungeon, TownNode
 from party.character import Character
 
 class WorldGenerator:
@@ -33,15 +33,39 @@ class WorldGenerator:
             # Initial danger rating
             tile.danger_rating = self.rng.get_float() * self.settings.get("danger_level", 0.5)
 
-        # Place a starting Town
+        # Place Faction Capitals
+        capitals = {
+            "citizens": (0, 0),
+            "bandits": (self.width - 1, self.height - 1)
+        }
+
+        # Place a starting Town at citizens capital
         start_tile = grid.get_tile(0, 0)
         start_tile.terrain_type = "plains"
         start_tile.movement_cost = 1.0
         start_tile.poi_id = "start_town"
 
         start_town = Town(poi_id="start_town", name="Riverfall", q=0, r=0)
+        start_town.nodes = [
+            TownNode("market", "Market", "Trade and buy supplies.", "market"),
+            TownNode("tavern", "Tavern", "Rest and hear rumors.", "tavern"),
+            TownNode("healer", "Healer", "Heal your party for gold.", "healer"),
+            TownNode("guild", "Guild Hall", "Recruit new members.", "recruit")
+        ]
         start_town.recruits = [Character("Brog", attack=14, defense=12, speed=4)]
+        start_town.faction_id = "citizens"
         self.locations["start_town"] = start_town
+
+        # Faction Territories (Voronoi)
+        for (q, r), tile in grid.tiles.items():
+            best_dist = 9999
+            best_faction = None
+            for faction_id, (cq, cr) in capitals.items():
+                d = grid.distance(q, r, cq, cr)
+                if d < best_dist:
+                    best_dist = d
+                    best_faction = faction_id
+            tile.faction_influence = best_faction
 
         # Randomly place some Dungeons
         dungeon_count = 5

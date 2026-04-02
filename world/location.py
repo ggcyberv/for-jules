@@ -3,6 +3,13 @@ from typing import List, Dict, Optional
 from party.character import Character
 
 @dataclass
+class TownNode:
+    node_id: str
+    name: str
+    description: str
+    service_type: str  # "market", "tavern", "healer", "recruit", "guild"
+
+@dataclass
 class Location:
     poi_id: str
     name: str
@@ -13,7 +20,8 @@ class Location:
 @dataclass
 class Town(Location):
     location_type: str = "town"
-    services: List[str] = field(default_factory=lambda: ["market", "tavern", "healer", "recruit"])
+    # Node-based services
+    nodes: List[TownNode] = field(default_factory=list)
     faction_id: Optional[str] = None
     inventory: List[str] = field(default_factory=list)
     healing_cost: int = 20
