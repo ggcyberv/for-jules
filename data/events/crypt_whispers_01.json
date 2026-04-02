@@ -1,0 +1,21 @@
+{
+  "event_id": "crypt_whispers_01",
+  "title": "Whispers from the Crypt",
+  "description": "As you approach the ancient ruins, a chilling whisper fills the air...",
+  "choices": [
+    {
+      "text": "Investigate the whispers",
+      "outcome": {
+        "type": "encounter",
+        "enemy_type": "ghost"
+      }
+    },
+    {
+      "text": "Ignore and move on",
+      "outcome": {
+        "type": "message",
+        "text": "You walked away safely."
+      }
+    }
+  ]
+}

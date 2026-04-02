@@ -69,6 +69,15 @@ class OverworldView:
         text_surf = self.font.render(ui_text, True, (255, 255, 255))
         screen.blit(text_surf, (10, 10))
 
+        # Faction Reputation
+        rep_y = 50
+        for faction_id, rep in state.faction_system.reputations.items():
+            status = state.faction_system.get_status(faction_id)
+            rep_text = f"Faction {faction_id}: {rep} ({status})"
+            rep_surf = self.font.render(rep_text, True, (255, 255, 100))
+            screen.blit(rep_surf, (self.screen_width - 200, rep_y))
+            rep_y += 15
+
         # Hero Stats
         y = 30
         for hero in state.party.members:
@@ -85,6 +94,6 @@ class OverworldView:
             log_y += 15
 
         # Controls Hint
-        hint_text = "SPACE: End Turn | S: Save | L: Load | Click to Move"
+        hint_text = "SPACE: End Turn | S: Save | L: Load | T: Tactics"
         hint_surf = self.font.render(hint_text, True, (150, 150, 150))
         screen.blit(hint_surf, (500, 10))

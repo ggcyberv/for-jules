@@ -14,8 +14,10 @@ from ui.overworld_view import OverworldView
 from ui.event_view import EventView
 from ui.dungeon_view import DungeonView
 from events.event_trigger import EventTrigger
-from events.event_template import EventManager, EventTemplate
+from events.event_template import EventManager, EventTemplate, EventChoice
+from events.consequence_engine import ConsequenceEngine
 from combat.combat_simulator import CombatSimulator
+from combat.tactics import TacticType
 from world.location import Town, Dungeon
 from engine.save_manager import SaveManager
 
@@ -33,6 +35,7 @@ class GameController:
         self.clock = pygame.time.Clock()
         self.logs = ["Welcome to the Unbound Realm."]
         self.active_event: Optional[EventTemplate] = None
+        self.current_tactic = TacticType.BALANCED
 
         # Subscribe to events
         event_bus.subscribe("hex_discovered", self.on_hex_discovered)
@@ -53,15 +56,20 @@ class GameController:
         state = GameState()
         state.initialize(grid, party, seed, world_gen.locations)
         grid.get_tile(0, 0).discovered = True
+
+        # Register a starting faction
+        from world.faction_system import Faction
+        state.faction_system.register_faction(Faction("citizens", "Riverfall Citizens", "Local townsfolk."))
+
         return state
 
     def on_hex_discovered(self, q, r):
         self.logs.append(f"Discovered hex at ({q}, {r})")
 
     def on_random_encounter(self, q, r):
-        self.logs.append("Dangerous encounter!")
+        self.logs.append(f"Encounter! (Tactic: {self.current_tactic.value})")
         enemies = [Character("Goblin", hp=30, attack=8, defense=5, speed=4)]
-        result = CombatSimulator.simulate_battle(self.state.party.members, enemies)
+        result = CombatSimulator.simulate_battle(self.state.party.members, enemies, self.current_tactic)
         if result["victory"]:
             self.logs.append("Victory! Gained XP.")
         else:
@@ -96,7 +104,7 @@ class GameController:
     def on_trigger_story_event(self, event_id, title=None, desc=None, choices=None):
         if choices:
             # Custom transient event
-            event = EventTemplate(event_id, title, desc, [pygame_rect_stub_choice(c["text"], c["outcome"]) for c in choices])
+            event = EventTemplate(event_id, title, desc, [EventChoice(c["text"], c["outcome"]) for c in choices])
         else:
             event = self.event_manager.get_event(event_id)
 
@@ -106,6 +114,10 @@ class GameController:
     def resolve_choice(self, choice_idx):
         choice = self.active_event.choices[choice_idx]
         outcome = choice.outcome
+
+        # Dispatch to ConsequenceEngine
+        ConsequenceEngine.apply_consequence(outcome)
+
         if outcome["type"] == "encounter":
             self.on_random_encounter(0, 0)
         elif outcome["type"] == "message":
@@ -146,6 +158,12 @@ class GameController:
                     self.logs.append("Game loaded.")
                 else:
                     self.logs.append("Failed to load save.")
+            elif event.key == pygame.K_t:
+                # Cycle tactics
+                tactics_list = list(TacticType)
+                idx = (tactics_list.index(self.current_tactic) + 1) % len(tactics_list)
+                self.current_tactic = tactics_list[idx]
+                self.logs.append(f"Current Tactic: {self.current_tactic.value}")
 
     def run_dungeon(self, event):
         if event.type == pygame.KEYDOWN:
@@ -198,10 +216,6 @@ class GameController:
                 self.event_view.render(self.screen, self.active_event)
             pygame.display.flip()
             self.clock.tick(30)
-
-def pygame_rect_stub_choice(text, outcome):
-    from events.event_template import EventChoice
-    return EventChoice(text, outcome)
 
 if __name__ == "__main__":
     controller = GameController()

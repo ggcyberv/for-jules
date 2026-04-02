@@ -1,3 +1,5 @@
+import json
+import os
 from dataclasses import dataclass, field
 from typing import List, Dict, Any, Optional
 
@@ -20,18 +22,33 @@ class EventManager:
         self.templates: Dict[str, EventTemplate] = {}
 
     def load_templates(self, directory: str):
-        # In a real implementation, this would load JSON files from the directory
-        # For Milestone 1, we register a sample event
-        sample_choice1 = EventChoice("Investigate the whispers", {"type": "encounter", "enemy_type": "ghost"})
-        sample_choice2 = EventChoice("Ignore and move on", {"type": "message", "text": "You walked away safely."})
+        if not os.path.exists(directory):
+            os.makedirs(directory, exist_ok=True)
+            return
 
-        sample_event = EventTemplate(
-            "crypt_whispers_01",
-            "Whispers from the Crypt",
-            "As you approach the ancient ruins, a chilling whisper fills the air...",
-            [sample_choice1, sample_choice2]
-        )
-        self.templates[sample_event.event_id] = sample_event
+        for filename in os.listdir(directory):
+            if filename.endswith(".json"):
+                with open(os.path.join(directory, filename), "r") as f:
+                    data = json.load(f)
+                    event_id = data.get("event_id")
+                    choices = [
+                        EventChoice(
+                            text=c.get("text"),
+                            outcome=c.get("outcome"),
+                            skill_check=c.get("skill_check")
+                        ) for c in data.get("choices", [])
+                    ]
+                    template = EventTemplate(
+                        event_id=event_id,
+                        title=data.get("title"),
+                        description=data.get("description"),
+                        choices=choices,
+                        conditions=data.get("conditions", {})
+                    )
+                    self.templates[event_id] = template
 
     def get_event(self, event_id: str) -> Optional[EventTemplate]:
         return self.templates.get(event_id)
+
+    def add_template(self, template: EventTemplate):
+        self.templates[template.event_id] = template
