@@ -56,7 +56,9 @@ class OverworldView:
 
             # Draw POI
             if tile.poi_id:
-                pygame.draw.rect(screen, (255, 255, 0), (px - 5, py - 5, 10, 10))
+                poi_color = (255, 255, 0)
+                if "dungeon" in tile.poi_id: poi_color = (200, 50, 50)
+                pygame.draw.rect(screen, poi_color, (px - 5, py - 5, 10, 10))
 
             if (q, r) == party_pos:
                 pygame.draw.circle(screen, (255, 215, 0), (int(px), int(py)), self.hex_size // 2)
@@ -67,9 +69,22 @@ class OverworldView:
         text_surf = self.font.render(ui_text, True, (255, 255, 255))
         screen.blit(text_surf, (10, 10))
 
+        # Hero Stats
+        y = 30
+        for hero in state.party.members:
+            hero_text = f"{hero.name}: HP {hero.hp}/{hero.max_hp} | LVL {hero.level}"
+            hero_surf = self.font.render(hero_text, True, (200, 255, 200))
+            screen.blit(hero_surf, (10, y))
+            y += 15
+
         # Log Overlay
         log_y = 500
         for log in logs[-5:]:
             log_surf = self.font.render(log, True, (200, 200, 200))
             screen.blit(log_surf, (10, log_y))
             log_y += 15
+
+        # Controls Hint
+        hint_text = "SPACE: End Turn | S: Save | L: Load | Click to Move"
+        hint_surf = self.font.render(hint_text, True, (150, 150, 150))
+        screen.blit(hint_surf, (500, 10))

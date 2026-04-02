@@ -15,6 +15,7 @@ class Town(Location):
     services: List[str] = field(default_factory=lambda: ["market", "tavern", "healer"])
     faction_id: Optional[str] = None
     inventory: List[str] = field(default_factory=list)
+    healing_cost: int = 20
 
 @dataclass
 class Dungeon(Location):

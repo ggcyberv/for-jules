@@ -9,7 +9,7 @@ class EventTrigger:
         tile = state.world.get_tile(q, r)
 
         # In Milestone 1, we simulate a random encounter chance
-        if tile.danger_rating > 0.7:
+        if tile.danger_rating > 0.85: # Reduced chance for demo
             event_bus.publish("random_encounter", q=q, r=r)
 
         # Check for POIs or specific hex discovery
@@ -19,3 +19,7 @@ class EventTrigger:
 
         if tile.poi_id:
             event_bus.publish("enter_location", poi_id=tile.poi_id)
+
+        # Example story event on specific hex
+        if q == 2 and r == 2:
+            event_bus.publish("trigger_story_event", event_id="crypt_whispers_01")

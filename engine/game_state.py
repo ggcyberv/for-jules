@@ -1,6 +1,7 @@
 from typing import Optional, Dict, Any
 from world.hex_grid import HexGrid
 from party.party_manager import Party
+from world.faction_system import FactionSystem
 
 class GameState:
     _instance = None
@@ -14,6 +15,7 @@ class GameState:
             cls._instance.seed: int = 0
             cls._instance.global_flags: Dict[str, Any] = {}
             cls._instance.locations: Dict[str, Any] = {}
+            cls._instance.faction_system: Optional[FactionSystem] = None
         return cls._instance
 
     def initialize(self, world: HexGrid, party: Party, seed: int, locations: Dict[str, Any]):
@@ -23,6 +25,7 @@ class GameState:
         self.turn = 1
         self.global_flags = {}
         self.locations = locations
+        self.faction_system = FactionSystem()
 
     def advance_turn(self):
         self.turn += 1
