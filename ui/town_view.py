@@ -1,6 +1,7 @@
 import pygame
 from typing import List, Optional
 from world.location import Town, TownNode
+from ui.ui_helper import UIHelper, COLOR_TEXT_GOLD, COLOR_TEXT_WHITE
 
 class TownView:
     def __init__(self, screen_width: int, screen_height: int):
@@ -11,26 +12,30 @@ class TownView:
         self.node_rects: List[pygame.Rect] = []
 
     def render(self, screen: pygame.Surface, town: Town):
-        screen.fill((50, 40, 30)) # Brownish town background
+        screen.fill((20, 20, 25))
+
+        # Central Panel
+        panel_rect = pygame.Rect(self.width // 2 - 250, 50, 500, 500)
+        UIHelper.draw_frame(screen, panel_rect)
 
         # Town Name
-        title_surf = self.large_font.render(f"Town: {town.name}", True, (255, 215, 0))
-        screen.blit(title_surf, (self.width // 2 - title_surf.get_width() // 2, 50))
+        title_surf = self.large_font.render(f"{town.name}", True, COLOR_TEXT_GOLD)
+        screen.blit(title_surf, (self.width // 2 - title_surf.get_width() // 2, 80))
 
         # Nodes
         self.node_rects = []
-        y = 150
+        y = 160
+        mx, my = pygame.mouse.get_pos()
         for i, node in enumerate(town.nodes):
-            rect = pygame.Rect(self.width // 2 - 200, y, 400, 40)
-            pygame.draw.rect(screen, (80, 70, 60), rect)
-            pygame.draw.rect(screen, (200, 200, 200), rect, 1)
+            rect = pygame.Rect(self.width // 2 - 200, y, 400, 45)
+            is_hovered = rect.collidepoint(mx, my)
+            UIHelper.draw_button(screen, rect, f"{node.name}", self.font, is_hovered)
 
-            node_text = f"{i+1}. {node.name} - {node.description}"
-            surf = self.font.render(node_text, True, (255, 255, 255))
-            screen.blit(surf, (rect.x + 10, rect.y + 10))
+            desc_surf = pygame.font.SysFont("Arial", 12).render(node.description, True, (200, 200, 200))
+            screen.blit(desc_surf, (rect.x + 10, rect.bottom + 2))
 
             self.node_rects.append(rect)
-            y += 50
+            y += 70
 
         # Footer
         footer_text = "Click to select a service node. Press ESC to leave town."

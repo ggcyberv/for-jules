@@ -1,6 +1,7 @@
 import pygame
 from typing import List, Optional
 from events.event_template import EventTemplate, EventChoice
+from ui.ui_helper import UIHelper, COLOR_TEXT_GOLD, COLOR_TEXT_WHITE
 
 class EventView:
     def __init__(self, screen_width: int, screen_height: int):
@@ -12,47 +13,28 @@ class EventView:
         self.choice_rects: List[pygame.Rect] = []
 
     def render(self, screen: pygame.Surface, event: EventTemplate):
-        # Draw background
-        pygame.draw.rect(screen, (20, 20, 20), self.rect)
-        pygame.draw.rect(screen, (200, 200, 200), self.rect, 2)
+        # Draw frame
+        UIHelper.draw_frame(screen, self.rect)
 
         # Title
-        title_surf = self.font.render(event.title, True, (255, 215, 0))
-        screen.blit(title_surf, (self.rect.x + 20, self.rect.y + 20))
+        title_surf = self.font.render(event.title, True, COLOR_TEXT_GOLD)
+        screen.blit(title_surf, (self.rect.x + 30, self.rect.y + 30))
 
         # Description
-        words = event.description.split()
-        lines = []
-        current_line = ""
-        for word in words:
-            test_line = current_line + word + " "
-            if self.small_font.size(test_line)[0] < self.width - 40:
-                current_line = test_line
-            else:
-                lines.append(current_line)
-                current_line = word + " "
-        lines.append(current_line)
-
-        y = self.rect.y + 60
-        for line in lines:
-            line_surf = self.small_font.render(line, True, (220, 220, 220))
-            screen.blit(line_surf, (self.rect.x + 20, y))
-            y += 20
+        y = self.rect.y + 70
+        y_offset = UIHelper.render_text_wrapped(screen, event.description, (self.rect.x + 30, y), self.small_font, self.width - 60)
 
         # Choices
         self.choice_rects = []
-        y = self.rect.y + 250
+        y = self.rect.y + 240
+        mx, my = pygame.mouse.get_pos()
         for i, choice in enumerate(event.choices):
-            choice_rect = pygame.Rect(self.rect.x + 20, y, self.width - 40, 30)
-            pygame.draw.rect(screen, (50, 50, 50), choice_rect)
-            pygame.draw.rect(screen, (150, 150, 150), choice_rect, 1)
-
-            choice_text = f"{i+1}. {choice.text}"
-            choice_surf = self.small_font.render(choice_text, True, (255, 255, 255))
-            screen.blit(choice_surf, (choice_rect.x + 10, choice_rect.y + 5))
+            choice_rect = pygame.Rect(self.rect.x + 30, y, self.width - 60, 35)
+            is_hovered = choice_rect.collidepoint(mx, my)
+            UIHelper.draw_button(screen, choice_rect, choice.text, self.small_font, is_hovered)
 
             self.choice_rects.append(choice_rect)
-            y += 40
+            y += 45
 
     def handle_click(self, pos) -> Optional[int]:
         for i, rect in enumerate(self.choice_rects):

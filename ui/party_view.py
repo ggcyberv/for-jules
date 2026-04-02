@@ -4,6 +4,7 @@ from party.party_manager import Party
 from party.character import Character
 from party.item import Item
 from engine.game_state import GameState
+from ui.ui_helper import UIHelper, COLOR_TEXT_GOLD, COLOR_TEXT_WHITE, COLOR_FRAME_GOLD, COLOR_HP_RED, COLOR_XP_GREEN, COLOR_BUTTON_NORMAL
 
 class PartyView:
     def __init__(self, screen_width: int, screen_height: int):
@@ -18,18 +19,15 @@ class PartyView:
         self.attr_rects = []
 
     def render(self, screen: pygame.Surface, party: Party):
-        pygame.draw.rect(screen, (30, 40, 50), self.rect)
-        pygame.draw.rect(screen, (200, 200, 200), self.rect, 2)
+        UIHelper.draw_frame(screen, self.rect)
 
         cat_tabs = ["Party", "Lore & Secrets", "Combat History"]
+        mx, my = pygame.mouse.get_pos()
         for i, cat in enumerate(cat_tabs):
             tab_id = cat.lower().split()[0]
             t_rect = pygame.Rect(self.rect.x + 20 + i * 140, self.rect.y - 30, 130, 30)
-            t_color = (100, 120, 140) if self.tab == tab_id else (40, 50, 60)
-            pygame.draw.rect(screen, t_color, t_rect)
-            pygame.draw.rect(screen, (255, 255, 255), t_rect, 1)
-            t_surf = self.font.render(cat, True, (255, 255, 255))
-            screen.blit(t_surf, (t_rect.x + 10, t_rect.y + 5))
+            is_hovered = t_rect.collidepoint(mx, my)
+            UIHelper.draw_button(screen, t_rect, cat, self.small_font, is_hovered or self.tab == tab_id)
 
         if self.tab == "party":
             self._render_party(screen, party)
@@ -39,20 +37,25 @@ class PartyView:
             self._render_logs(screen, party)
 
     def _render_party(self, screen, party):
+        mx, my = pygame.mouse.get_pos()
         for i, char in enumerate(party.members):
             tab_rect = pygame.Rect(self.rect.x + 20 + i * 110, self.rect.y + 20, 100, 30)
-            color = (100, 120, 140) if i == self.char_idx else (60, 70, 80)
-            pygame.draw.rect(screen, color, tab_rect)
-            pygame.draw.rect(screen, (255, 255, 255), tab_rect, 1)
-            name_surf = self.small_font.render(char.name, True, (255, 255, 255))
-            screen.blit(name_surf, (tab_rect.x + 5, tab_rect.y + 7))
+            is_active = (i == self.char_idx)
+            is_hovered = tab_rect.collidepoint(mx, my)
+            UIHelper.draw_button(screen, tab_rect, char.name, self.small_font, is_hovered or is_active)
 
         if not party.members: return
         char = party.members[self.char_idx]
 
         detail_y = self.rect.y + 70
-        title_surf = self.large_font.render(f"{char.name} (Level {char.level})", True, (255, 215, 0))
+        title_surf = self.large_font.render(f"{char.name} - Level {char.level}", True, COLOR_TEXT_GOLD)
         screen.blit(title_surf, (self.rect.x + 20, detail_y))
+
+        # XP Bar
+        xp_text = f"XP: {char.xp} / {char.level * 100}"
+        xp_surf = self.small_font.render(xp_text, True, COLOR_TEXT_WHITE)
+        screen.blit(xp_surf, (self.rect.x + 20, detail_y + 35))
+        UIHelper.draw_progress_bar(screen, self.rect.x + 20, detail_y + 55, 250, 10, char.xp % (char.level * 100), char.level * 100, COLOR_XP_GREEN)
 
         stats = [
             ("Attack", char.attack, char.effective_attack),
@@ -62,14 +65,21 @@ class PartyView:
             ("Critical %", char.critical_chance, char.critical_chance)
         ]
         self.attr_rects = []
+        stat_y = detail_y + 80
+        if char.attribute_points > 0:
+            ap_surf = self.font.render(f"Attribute Points: {char.attribute_points}", True, COLOR_TEXT_GOLD)
+            screen.blit(ap_surf, (self.rect.x + 20, stat_y))
+            stat_y += 30
+
         for i, (name, base, eff) in enumerate(stats):
-            text = f"{name}: {eff} (Base: {base})"
-            surf = self.font.render(text, True, (255, 255, 255))
-            screen.blit(surf, (self.rect.x + 20, detail_y + 40 + i * 25))
+            text = f"{name}: {eff}"
+            surf = self.font.render(text, True, COLOR_TEXT_WHITE)
+            screen.blit(surf, (self.rect.x + 20, stat_y))
             if char.attribute_points > 0 and i < 3: # Can only increase core stats
-                plus_rect = pygame.Rect(self.rect.x + 250, detail_y + 40 + i * 25, 20, 20)
-                pygame.draw.rect(screen, (0, 150, 0), plus_rect)
+                plus_rect = pygame.Rect(self.rect.x + 250, stat_y, 20, 20)
+                UIHelper.draw_button(screen, plus_rect, "+", self.small_font, plus_rect.collidepoint(mx, my))
                 self.attr_rects.append((plus_rect, name.lower()))
+            stat_y += 30
 
         mid_x = self.rect.x + 300
         bs_title = self.font.render("Backstory:", True, (200, 200, 255))

@@ -1,13 +1,15 @@
 import pygame
 from typing import List, Optional
 from party.character import Character
+from ui.ui_helper import UIHelper, COLOR_TEXT_GOLD, COLOR_TEXT_WHITE, COLOR_HP_RED, COLOR_FRAME_GOLD
 
 class CombatView:
     def __init__(self, screen_width: int, screen_height: int):
         self.width = screen_width
         self.height = screen_height
         self.font = pygame.font.SysFont("Arial", 14)
-        self.large_font = pygame.font.SysFont("Arial", 20)
+        self.medium_font = pygame.font.SysFont("Arial", 16)
+        self.large_font = pygame.font.SysFont("Arial", 22)
         self.button_rects: List[pygame.Rect] = []
         self.sprites = self._load_sprites()
         self.effects = []
@@ -23,31 +25,41 @@ class CombatView:
         return sprites
 
     def render(self, screen: pygame.Surface, party: List[Character], enemies: List[Character], log: List[str], turn: int, summary: Optional[str] = None):
-        screen.fill((20, 10, 10))
+        screen.fill((15, 15, 20))
+
+        # Central Battle Log Frame
+        log_rect = pygame.Rect(200, 350, 400, 150)
+        UIHelper.draw_frame(screen, log_rect, border_color=(100, 100, 100))
 
         # Draw Party
-        px, py = 100, 100
+        px, py = 120, 100
         for char in party:
-            color = (0, 255, 0) if char.hp > 0 else (100, 0, 0)
             sprite = self.sprites.get(char.name.lower(), self.sprites.get("knight"))
-            if char.hp <= 0: sprite.set_alpha(100)
-            screen.blit(pygame.transform.scale(sprite, (48, 48)), (px - 24, py - 24))
-            hp_text = f"{char.name}: {char.hp}/{char.max_hp}"
-            surf = self.font.render(hp_text, True, (255, 255, 255))
-            screen.blit(surf, (px - 40, py + 25))
-            py += 80
+            draw_sprite = sprite.copy()
+            if char.hp <= 0: draw_sprite.set_alpha(100)
+            screen.blit(pygame.transform.scale(draw_sprite, (64, 64)), (px - 32, py - 32))
+
+            # Name and HP bar
+            h_surf = self.medium_font.render(char.name, True, COLOR_TEXT_WHITE)
+            screen.blit(h_surf, (px - 50, py + 35))
+            UIHelper.draw_progress_bar(screen, px - 50, py + 55, 100, 8, char.hp, char.max_hp, COLOR_HP_RED)
+            py += 100
 
         # Draw Enemies
-        ex, ey = 700, 100
+        ex, ey = 680, 100
         for char in enemies:
-            color = (255, 0, 0) if char.hp > 0 else (100, 0, 0)
             sprite = self.sprites.get(char.name.lower(), self.sprites.get("orc"))
-            if char.hp <= 0: sprite.set_alpha(100)
-            screen.blit(pygame.transform.scale(sprite, (48, 48)), (ex - 24, ey - 24))
-            hp_text = f"{char.name}: {char.hp}"
-            surf = self.font.render(hp_text, True, (255, 255, 255))
-            screen.blit(surf, (ex - 40, ey + 25))
-            ey += 80
+            draw_sprite = sprite.copy()
+            if char.hp <= 0: draw_sprite.set_alpha(100)
+            screen.blit(pygame.transform.scale(draw_sprite, (64, 64)), (ex - 32, ey - 32))
+
+            # Name and HP bar
+            e_surf = self.medium_font.render(char.name, True, COLOR_TEXT_WHITE)
+            screen.blit(e_surf, (ex - 50, ey + 35))
+            # Assume max_hp for enemies if not present (simple placeholder)
+            max_hp = getattr(char, 'max_hp', 50)
+            UIHelper.draw_progress_bar(screen, ex - 50, ey + 55, 100, 8, char.hp, max_hp, COLOR_HP_RED)
+            ey += 100
 
         # Draw Effects
         new_effects = []
@@ -57,34 +69,38 @@ class CombatView:
             if fx_timer > 1: new_effects.append((fx_type, fx_pos, fx_timer - 1))
         self.effects = new_effects
 
-        # Draw Log
-        ly = 300
-        for entry in log[-10:]:
-            color = (255, 255, 255)
+        # Draw Log Entries
+        ly = log_rect.y + 10
+        for entry in log[-6:]:
+            color = COLOR_TEXT_WHITE
             if "SEVERE" in entry: color = (255, 100, 100)
             elif "Victory" in entry: color = (100, 255, 100)
+            elif "POWER STRIKE" in entry: color = COLOR_TEXT_GOLD
             lsurf = self.font.render(entry, True, color)
-            screen.blit(lsurf, (250, ly))
+            screen.blit(lsurf, (log_rect.x + 10, ly))
             ly += 20
 
         if summary:
-            s_surf = self.large_font.render(summary, True, (255, 215, 0))
+            s_surf = self.large_font.render(summary, True, COLOR_TEXT_GOLD)
             screen.blit(s_surf, (self.width // 2 - s_surf.get_width() // 2, 250))
 
         # Interventions
         self.button_rects = []
-        btn_y = 500
+        btn_y = 510
         actions = ["heal", "strike", "retreat"]
+        mx, my = pygame.mouse.get_pos()
         for action in actions:
-            rect = pygame.Rect(300, btn_y, 200, 25)
-            pygame.draw.rect(screen, (80, 80, 80), rect)
-            pygame.draw.rect(screen, (200, 200, 200), rect, 1)
-            atext = self.font.render(f"Intervene: {action.capitalize()}", True, (255, 255, 255))
-            screen.blit(atext, (rect.x + 10, rect.y + 3))
+            rect = pygame.Rect(self.width // 2 - 100, btn_y, 200, 25)
+            is_hovered = rect.collidepoint(mx, my)
+            UIHelper.draw_button(screen, rect, f"Intervene: {action.capitalize()}", self.font, is_hovered)
             self.button_rects.append(rect)
             btn_y += 30
 
-        # Instructions
+        # Title and Instructions
+        title_text = f"BATTLE ROUND {turn}"
+        t_surf = self.large_font.render(title_text, True, COLOR_TEXT_GOLD)
+        screen.blit(t_surf, (self.width // 2 - t_surf.get_width() // 2, 20))
+
         text = "SPACE: Next Round | ESC: Finalize"
         surf = self.font.render(text, True, (200, 200, 200))
         screen.blit(surf, (self.width // 2 - surf.get_width() // 2, self.height - 30))

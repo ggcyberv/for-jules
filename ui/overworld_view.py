@@ -3,6 +3,7 @@ import math
 from typing import Tuple, List, Optional, Dict
 from world.hex_grid import HexGrid, HexTile
 from engine.game_state import GameState
+from ui.ui_helper import UIHelper, COLOR_TEXT_GOLD, COLOR_TEXT_WHITE, COLOR_FRAME_GOLD, COLOR_HP_RED, COLOR_AP_BLUE, COLOR_XP_GREEN
 
 class OverworldView:
     def __init__(self, screen_width: int, screen_height: int, hex_size: int = 30):
@@ -10,6 +11,7 @@ class OverworldView:
         self.screen_height = screen_height
         self.hex_size = hex_size
         self.font = pygame.font.SysFont("Arial", 12)
+        self.medium_font = pygame.font.SysFont("Arial", 14)
         self.large_font = pygame.font.SysFont("Arial", 18)
         self.camera_offset = [0, 0]
 
@@ -39,17 +41,18 @@ class OverworldView:
 
     def render(self, screen: pygame.Surface, grid: HexGrid, party_pos: Tuple[int, int], logs: List[str]):
         self.update_camera(party_pos)
-        screen.fill((30, 30, 30))
+        screen.fill((20, 20, 25)) # Darker BG
 
+        # Draw Hex Grid
         for (q, r), tile in grid.tiles.items():
             px, py = self.hex_to_pixel(q, r)
-            if px < -50 or px > self.screen_width + 50 or py < -50 or py > self.screen_height + 50:
+            if px < -50 or px > self.screen_width - 200 or py < -50 or py > self.screen_height + 50:
                 continue
 
-            color = (60, 60, 60) if not tile.discovered else (50, 150, 50)
-            if tile.terrain_type == "mountain": color = (100, 100, 100)
-            elif tile.terrain_type == "forest": color = (34, 139, 34)
-            elif tile.terrain_type == "water": color = (0, 0, 255)
+            color = (40, 40, 45) if not tile.discovered else (50, 120, 50)
+            if tile.terrain_type == "mountain": color = (80, 80, 80)
+            elif tile.terrain_type == "forest": color = (30, 90, 30)
+            elif tile.terrain_type == "water": color = (30, 30, 150)
 
             points = []
             for i in range(6):
@@ -58,48 +61,66 @@ class OverworldView:
                              py + self.hex_size * math.sin(angle_rad)))
 
             pygame.draw.polygon(screen, color, points)
-            border_color = (150, 150, 150)
-            if tile.faction_influence == "citizens": border_color = (100, 100, 255)
-            elif tile.faction_influence == "bandits": border_color = (255, 100, 100)
-            pygame.draw.polygon(screen, border_color, points, 2)
+            border_color = (60, 60, 70)
+            if tile.faction_influence == "citizens": border_color = (80, 80, 180)
+            elif tile.faction_influence == "bandits": border_color = (180, 80, 80)
+            pygame.draw.polygon(screen, border_color, points, 1)
 
             if tile.poi_id:
-                poi_color = (255, 255, 0)
+                poi_color = COLOR_TEXT_GOLD
                 if "dungeon" in tile.poi_id or "loc" in tile.poi_id: poi_color = (200, 50, 50)
                 pygame.draw.rect(screen, poi_color, (px - 5, py - 5, 10, 10))
 
             if (q, r) == party_pos:
-                pygame.draw.circle(screen, (255, 215, 0), (int(px), int(py)), self.hex_size // 2)
+                pygame.draw.circle(screen, COLOR_TEXT_GOLD, (int(px), int(py)), self.hex_size // 2)
 
         state = GameState()
-        ui_text = f"Turn: {state.turn} | Gold: {state.party.gold} | Food: {state.party.food} | AP: {state.party.current_ap}"
-        text_surf = self.font.render(ui_text, True, (255, 255, 255))
-        screen.blit(text_surf, (10, 10))
 
-        rep_y = 50
-        for faction_id, rep in state.faction_system.reputations.items():
-            status = state.faction_system.get_status(faction_id)
-            rep_text = f"Faction {faction_id}: {rep} ({status})"
-            rep_surf = self.font.render(rep_text, True, (255, 255, 100))
-            screen.blit(rep_surf, (self.screen_width - 200, rep_y))
-            rep_y += 15
+        # Right Side Panel
+        panel_rect = pygame.Rect(self.screen_width - 250, 0, 250, self.screen_height)
+        UIHelper.draw_frame(screen, panel_rect)
 
-        y = 30
+        # Party Status in Panel
+        y = 20
+        title_surf = self.large_font.render("The Party", True, COLOR_TEXT_GOLD)
+        screen.blit(title_surf, (panel_rect.x + 20, y))
+        y += 40
+
         for hero in state.party.members:
-            hero_text = f"{hero.name}: HP {hero.hp}/{hero.max_hp} | LVL {hero.level}"
-            hero_surf = self.font.render(hero_text, True, (200, 255, 200))
-            screen.blit(hero_surf, (10, y))
-            y += 15
+            h_name = self.medium_font.render(hero.name, True, COLOR_TEXT_WHITE)
+            screen.blit(h_name, (panel_rect.x + 20, y))
+            UIHelper.draw_progress_bar(screen, panel_rect.x + 20, y + 20, 200, 10, hero.hp, hero.max_hp, COLOR_HP_RED)
+            UIHelper.draw_progress_bar(screen, panel_rect.x + 20, y + 32, 200, 5, hero.xp % 100, 100, COLOR_XP_GREEN)
+            y += 50
 
-        log_y = 500
-        for log in logs[-5:]:
-            log_surf = self.font.render(log, True, (200, 200, 200))
-            screen.blit(log_surf, (10, log_y))
-            log_y += 15
+        # Resources
+        y += 20
+        res_text = f"Gold: {state.party.gold} | Food: {state.party.food}"
+        res_surf = self.medium_font.render(res_text, True, COLOR_TEXT_GOLD)
+        screen.blit(res_surf, (panel_rect.x + 20, y))
+        y += 30
 
-        hint_text = "SPACE: End Turn | S: Save | L: Load | T: Tactics | I: Party"
+        ap_text = f"AP: {state.party.current_ap}"
+        screen.blit(self.medium_font.render(ap_text, True, COLOR_AP_BLUE), (panel_rect.x + 20, y))
+        y += 30
+
+        # Turn count
+        turn_text = f"Turn: {state.turn}"
+        screen.blit(self.medium_font.render(turn_text, True, COLOR_TEXT_WHITE), (panel_rect.x + 20, y))
+        y += 40
+
+        # Logs in Panel
+        log_title = self.medium_font.render("Chronicle:", True, COLOR_TEXT_GOLD)
+        screen.blit(log_title, (panel_rect.x + 20, y))
+        y += 25
+        for log in logs[-8:]:
+            y += UIHelper.render_text_wrapped(screen, f"> {log}", (panel_rect.x + 20, y), self.font, 210, (200, 200, 200))
+            y += 5
+
+        # Top Bar hint
+        hint_text = "SPACE: End Turn | S: Save | L: Load | I: Party"
         hint_surf = self.font.render(hint_text, True, (150, 150, 150))
-        screen.blit(hint_surf, (500, 10))
+        screen.blit(hint_surf, (10, 10))
 
         # Improved Tooltip handling
         mx, my = pygame.mouse.get_pos()
@@ -111,12 +132,12 @@ class OverworldView:
                 self._render_tooltip(screen, mx, my, f"{loc.name} ({loc.location_type})")
 
     def _render_tooltip(self, screen, x, y, text):
-        surf = self.font.render(text, True, (255, 255, 255))
-        padding = 5
+        surf = self.medium_font.render(text, True, COLOR_TEXT_WHITE)
+        padding = 8
         rect = pygame.Rect(x + 10, y + 10, surf.get_width() + padding * 2, surf.get_height() + padding * 2)
         # Keep tooltip on screen
         if rect.right > self.screen_width: rect.right = x - 10
         if rect.bottom > self.screen_height: rect.bottom = y - 10
-        pygame.draw.rect(screen, (0, 0, 0), rect)
-        pygame.draw.rect(screen, (255, 255, 255), rect, 1)
+
+        UIHelper.draw_frame(screen, rect, border_color=(150, 150, 150), bg_color=(20, 20, 20), border_width=1)
         screen.blit(surf, (rect.x + padding, rect.y + padding))
