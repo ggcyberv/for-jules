@@ -200,3 +200,32 @@ class GameManager:
 
         direction = "to POI" if to_poi else "to hero"
         return {"success": True, "message": f"Stationed {quantity} {unit_name} {direction}"}
+
+    def get_render_state(self) -> Dict[str, Any]:
+        tiles = []
+        for x in range(self.game_map.width):
+            for y in range(self.game_map.height):
+                tile = self.game_map.get_tile(x, y)
+                if tile:
+                    poi_data = None
+                    if tile.poi:
+                        poi_data = {
+                            "type": tile.poi.poi_type,
+                            "owner": tile.poi.owner_id
+                        }
+                    tiles.append({
+                        "x": x, "y": y,
+                        "terrain": tile.terrain_type,
+                        "poi": poi_data
+                    })
+
+        heroes = []
+        for player in self.players.values():
+            for hero in player.heroes:
+                heroes.append({
+                    "x": hero.position[0],
+                    "y": hero.position[1],
+                    "owner": hero.owner_id
+                })
+
+        return {"tiles": tiles, "heroes": heroes}
