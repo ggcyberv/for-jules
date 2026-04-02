@@ -8,6 +8,7 @@ from engine.rng_manager import RNGManager
 from engine.event_bus import event_bus
 from world.world_generator import WorldGenerator
 from world.dungeon_generator import DungeonGenerator
+from world.hex_grid import HexGrid
 from party.party_manager import Party
 from party.character import Character
 from party.item import Item, Weapon, Armor
@@ -29,7 +30,10 @@ class GameController:
         pygame.init()
         self.screen = pygame.display.set_mode((800, 600))
         pygame.display.set_caption("Chronicles of the Unbound Realm")
+
+        self.world_gen = None
         self.state = self.setup_game()
+
         self.overworld_view = OverworldView(800, 600)
         self.event_view = EventView(800, 600)
         self.dungeon_view = DungeonView(800, 600)
@@ -50,27 +54,33 @@ class GameController:
         event_bus.subscribe("enter_location", self.on_enter_location)
         event_bus.subscribe("trigger_story_event", self.on_trigger_story_event)
 
+        # Initial chunk check
+        self.check_chunks(0, 0)
+
     def setup_game(self):
         seed = secrets.randbits(32)
         settings = {"world_size": (15, 10), "danger_level": 0.6}
-        world_gen = WorldGenerator(seed, settings)
-        grid = world_gen.generate()
+        self.world_gen = WorldGenerator(seed, settings)
+        grid = HexGrid(chunk_size=10)
 
-        hero1 = Character("Alaric", attack=15, defense=10, speed=6)
-        hero2 = Character("Elara", attack=10, defense=12, speed=5)
+        hero1 = Character("Alaric", attack=15, defense=10, speed=6, backstory="A disgraced knight seeking redemption.")
+        hero2 = Character("Elara", attack=10, defense=12, speed=5, backstory="A nomadic healer from the eastern plains.")
         party = Party(members=[hero1, hero2])
 
         state = GameState()
-        state.initialize(grid, party, seed, world_gen.locations)
-        grid.get_tile(0, 0).discovered = True
-
-        from world.faction_system import Faction
-        state.faction_system.register_faction(Faction("citizens", "Riverfall Citizens", "Local townsfolk."))
-
+        state.initialize(grid, party, seed, self.world_gen.locations)
+        # 0,0 is handled by generate_chunk which is called in __init__
         return state
+
+    def check_chunks(self, q, r):
+        for dq in [-1, 0, 1]:
+            for dr in [-1, 0, 1]:
+                cq, cr = self.state.world.get_chunk_coords(q + dq * 5, r + dr * 5)
+                self.world_gen.generate_chunk(self.state.world, cq, cr)
 
     def on_hex_discovered(self, q, r):
         self.logs.append(f"Discovered hex at ({q}, {r})")
+        self.check_chunks(q, r)
 
     def on_random_encounter(self, q, r):
         self.logs.append(f"Encounter! (Tactic: {self.current_tactic.value})")
@@ -99,7 +109,6 @@ class GameController:
             event = EventTemplate(event_id, title, desc, [EventChoice(c["text"], c["outcome"]) for c in choices])
         else:
             event = self.event_manager.get_event(event_id)
-
         if event:
             self.active_event = event
 
@@ -132,42 +141,6 @@ class GameController:
                 self.logs.append("Not enough gold!")
 
         self.active_event = None
-
-    def handle_town_node(self, node: TownNode):
-        if node.service_type == "healer":
-            cost = self.active_town.healing_cost
-            if self.state.party.gold >= cost:
-                self.state.party.gold -= cost
-                for m in self.state.party.members: m.hp = m.max_hp
-                self.logs.append("Party healed at the temple.")
-            else:
-                self.logs.append("Not enough gold for healing.")
-        elif node.service_type == "recruit":
-            if self.active_town.recruits:
-                recruit = self.active_town.recruits[0]
-                self.on_trigger_story_event("recruit_offer_" + self.active_town.poi_id,
-                                          title=f"New Recruit: {recruit.name}",
-                                          desc=f"A brave soul named {recruit.name} wants to join your party for {self.active_town.recruitment_cost} gold.",
-                                          choices=[
-                                              {"text": f"Recruit {recruit.name}", "outcome": {"type": "recruit", "recruit": recruit, "cost": self.active_town.recruitment_cost, "loc": self.active_town}},
-                                              {"text": "Maybe later", "outcome": {"type": "message", "text": "You declined the offer."}}
-                                          ])
-            else:
-                self.logs.append("No recruits available.")
-        elif node.service_type == "market":
-            if self.active_town.inventory:
-                item = self.active_town.inventory[0]
-                self.on_trigger_story_event("market_buy_" + self.active_town.poi_id,
-                                          title="Marketplace",
-                                          desc=f"The merchant offers a {item.name} for {item.value} gold.",
-                                          choices=[
-                                              {"text": f"Buy {item.name}", "outcome": {"type": "buy", "item": item, "cost": item.value, "loc": self.active_town}},
-                                              {"text": "Leave", "outcome": {"type": "message", "text": "You browsing finished."}}
-                                          ])
-            else:
-                self.logs.append("Market is empty.")
-        else:
-            self.logs.append(f"Visited {node.name}. (Service not implemented)")
 
     def run_overworld(self, event):
         if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
@@ -236,6 +209,42 @@ class GameController:
             if event.key == pygame.K_ESCAPE:
                 self.active_town = None
                 self.logs.append("Left town.")
+
+    def handle_town_node(self, node: TownNode):
+        if node.service_type == "healer":
+            cost = self.active_town.healing_cost
+            if self.state.party.gold >= cost:
+                self.state.party.gold -= cost
+                for m in self.state.party.members: m.hp = m.max_hp
+                self.logs.append("Party healed at the temple.")
+            else:
+                self.logs.append("Not enough gold for healing.")
+        elif node.service_type == "recruit":
+            if self.active_town.recruits:
+                recruit = self.active_town.recruits[0]
+                self.on_trigger_story_event("recruit_offer_" + self.active_town.poi_id,
+                                          title=f"New Recruit: {recruit.name}",
+                                          desc=f"A brave soul named {recruit.name} wants to join your party for {self.active_town.recruitment_cost} gold.",
+                                          choices=[
+                                              {"text": f"Recruit {recruit.name}", "outcome": {"type": "recruit", "recruit": recruit, "cost": self.active_town.recruitment_cost, "loc": self.active_town}},
+                                              {"text": "Maybe later", "outcome": {"type": "message", "text": "You declined the offer."}}
+                                          ])
+            else:
+                self.logs.append("No recruits available.")
+        elif node.service_type == "market":
+            if self.active_town.inventory:
+                item = self.active_town.inventory[0]
+                self.on_trigger_story_event("market_buy_" + self.active_town.poi_id,
+                                          title="Marketplace",
+                                          desc=f"The merchant offers a {item.name} for {item.value} gold.",
+                                          choices=[
+                                              {"text": f"Buy {item.name}", "outcome": {"type": "buy", "item": item, "cost": item.value, "loc": self.active_town}},
+                                              {"text": "Leave", "outcome": {"type": "message", "text": "You browsing finished."}}
+                                          ])
+            else:
+                self.logs.append("Market is empty.")
+        else:
+            self.logs.append(f"Visited {node.name}. (Service not implemented)")
 
     def run(self):
         while True:

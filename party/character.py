@@ -3,6 +3,12 @@ from typing import List, Dict, Optional
 from party.item import Equipment, Weapon, Armor
 
 @dataclass
+class Skill:
+    name: str
+    description: str
+    level_required: int = 1
+
+@dataclass
 class Affliction:
     name: str
     stat_penalty: Dict[str, int]
@@ -11,6 +17,7 @@ class Affliction:
 @dataclass
 class Character:
     name: str
+    backstory: str = "A mysterious adventurer."
     level: int = 1
     xp: int = 0
     hp: int = 100
@@ -18,11 +25,12 @@ class Character:
     attack: int = 10
     defense: int = 10
     speed: int = 5
-    skills: List[str] = field(default_factory=list)
+    skills: List[Skill] = field(default_factory=list)
     relationships: Dict[str, int] = field(default_factory=dict)
     afflictions: List[Affliction] = field(default_factory=list)
     equipment: Equipment = field(default_factory=Equipment)
     attribute_points: int = 0
+    combat_log: List[str] = field(default_factory=list)
 
     @property
     def effective_attack(self) -> int:
@@ -54,3 +62,6 @@ class Character:
         self.max_hp += 10
         self.hp = self.max_hp
         self.attribute_points += 2
+        # Auto-unlock skills? (Simplified)
+        if self.level == 3:
+            self.skills.append(Skill("Power Strike", "A heavy blow dealing massive damage."))

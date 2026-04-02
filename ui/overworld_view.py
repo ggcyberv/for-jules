@@ -1,6 +1,6 @@
 import pygame
 import math
-from typing import Tuple, List, Optional
+from typing import Tuple, List, Optional, Dict
 from world.hex_grid import HexGrid, HexTile
 from engine.game_state import GameState
 
@@ -22,8 +22,6 @@ class OverworldView:
         py -= 100
         q = (2/3 * px) / self.hex_size
         r = (-1/3 * px + math.sqrt(3)/3 * py) / self.hex_size
-
-        # Round axial to nearest hex
         x, y, z = q, r, -q - r
         rx, ry, rz = round(x), round(y), round(z)
         dx, dy, dz = abs(rx - x), abs(ry - y), abs(rz - z)
@@ -35,10 +33,17 @@ class OverworldView:
     def render(self, screen: pygame.Surface, grid: HexGrid, party_pos: Tuple[int, int], logs: List[str]):
         screen.fill((30, 30, 30))
 
+        # Determine view bounds based on party
+        # For infinite map, we only render tiles in the grid.tiles dict
+        # but could optimize to only render within screen bounds
+
         for (q, r), tile in grid.tiles.items():
             px, py = self.hex_to_pixel(q, r)
 
-            # Draw hex background
+            # Simple culling
+            if px < -50 or px > self.screen_width + 50 or py < -50 or py > self.screen_height + 50:
+                continue
+
             color = (60, 60, 60) if not tile.discovered else (50, 150, 50)
             if tile.terrain_type == "mountain": color = (100, 100, 100)
             elif tile.terrain_type == "forest": color = (34, 139, 34)
@@ -52,30 +57,24 @@ class OverworldView:
                              py + self.hex_size * math.sin(angle_rad)))
 
             pygame.draw.polygon(screen, color, points)
-
-            # Faction Border logic
             border_color = (150, 150, 150)
             if tile.faction_influence == "citizens": border_color = (100, 100, 255)
             elif tile.faction_influence == "bandits": border_color = (255, 100, 100)
-
             pygame.draw.polygon(screen, border_color, points, 2)
 
-            # Draw POI
             if tile.poi_id:
                 poi_color = (255, 255, 0)
-                if "dungeon" in tile.poi_id: poi_color = (200, 50, 50)
+                if "dungeon" in tile.poi_id or "loc" in tile.poi_id: poi_color = (200, 50, 50)
                 pygame.draw.rect(screen, poi_color, (px - 5, py - 5, 10, 10))
 
             if (q, r) == party_pos:
                 pygame.draw.circle(screen, (255, 215, 0), (int(px), int(py)), self.hex_size // 2)
 
-        # UI Overlay
         state = GameState()
         ui_text = f"Turn: {state.turn} | Gold: {state.party.gold} | Food: {state.party.food} | AP: {state.party.current_ap}"
         text_surf = self.font.render(ui_text, True, (255, 255, 255))
         screen.blit(text_surf, (10, 10))
 
-        # Faction Reputation
         rep_y = 50
         for faction_id, rep in state.faction_system.reputations.items():
             status = state.faction_system.get_status(faction_id)
@@ -84,7 +83,6 @@ class OverworldView:
             screen.blit(rep_surf, (self.screen_width - 200, rep_y))
             rep_y += 15
 
-        # Hero Stats
         y = 30
         for hero in state.party.members:
             hero_text = f"{hero.name}: HP {hero.hp}/{hero.max_hp} | LVL {hero.level}"
@@ -92,14 +90,29 @@ class OverworldView:
             screen.blit(hero_surf, (10, y))
             y += 15
 
-        # Log Overlay
         log_y = 500
         for log in logs[-5:]:
             log_surf = self.font.render(log, True, (200, 200, 200))
             screen.blit(log_surf, (10, log_y))
             log_y += 15
 
-        # Controls Hint
-        hint_text = "SPACE: End Turn | S: Save | L: Load | T: Tactics"
+        hint_text = "SPACE: End Turn | S: Save | L: Load | T: Tactics | I: Party"
         hint_surf = self.font.render(hint_text, True, (150, 150, 150))
         screen.blit(hint_surf, (500, 10))
+
+        # Tooltip handling
+        mx, my = pygame.mouse.get_pos()
+        tq, tr = self.pixel_to_hex(mx, my)
+        tile = grid.get_tile(tq, tr)
+        if tile and tile.poi_id and tile.discovered:
+            loc = state.locations.get(tile.poi_id)
+            if loc:
+                self._render_tooltip(screen, mx, my, f"{loc.name} ({loc.location_type})")
+
+    def _render_tooltip(self, screen, x, y, text):
+        surf = self.font.render(text, True, (255, 255, 255))
+        padding = 5
+        rect = pygame.Rect(x + 10, y + 10, surf.get_width() + padding * 2, surf.get_height() + padding * 2)
+        pygame.draw.rect(screen, (0, 0, 0), rect)
+        pygame.draw.rect(screen, (255, 255, 255), rect, 1)
+        screen.blit(surf, (rect.x + padding, rect.y + padding))

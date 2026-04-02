@@ -6,8 +6,8 @@ from party.item import Item
 
 class PartyView:
     def __init__(self, screen_width: int, screen_height: int):
-        self.width = 700
-        self.height = 500
+        self.width = 750
+        self.height = 550
         self.rect = pygame.Rect((screen_width - self.width) // 2, (screen_height - self.height) // 2, self.width, self.height)
         self.font = pygame.font.SysFont("Arial", 16)
         self.small_font = pygame.font.SysFont("Arial", 12)
@@ -19,6 +19,7 @@ class PartyView:
         pygame.draw.rect(screen, (30, 40, 50), self.rect)
         pygame.draw.rect(screen, (200, 200, 200), self.rect, 2)
 
+        # Party Roster Tabs
         for i, char in enumerate(party.members):
             tab_rect = pygame.Rect(self.rect.x + 20 + i * 110, self.rect.y + 20, 100, 30)
             color = (100, 120, 140) if i == self.char_idx else (60, 70, 80)
@@ -30,6 +31,7 @@ class PartyView:
         if not party.members: return
         char = party.members[self.char_idx]
 
+        # Left Pane: Stats and Attributes
         detail_y = self.rect.y + 70
         title_surf = self.large_font.render(f"{char.name} (Level {char.level})", True, (255, 215, 0))
         screen.blit(title_surf, (self.rect.x + 20, detail_y))
@@ -45,7 +47,6 @@ class PartyView:
             text = f"{name}: {eff} (Base: {base})"
             surf = self.font.render(text, True, (255, 255, 255))
             screen.blit(surf, (self.rect.x + 20, detail_y + 40 + i * 30))
-
             if char.attribute_points > 0:
                 plus_rect = pygame.Rect(self.rect.x + 250, detail_y + 40 + i * 30, 20, 20)
                 pygame.draw.rect(screen, (0, 150, 0), plus_rect)
@@ -53,29 +54,55 @@ class PartyView:
                 screen.blit(plus_surf, (plus_rect.x + 5, plus_rect.y))
                 self.attr_rects.append((plus_rect, name.lower()))
 
-        # Level up info
-        if char.attribute_points > 0:
-            msg = f"Available Attribute Points: {char.attribute_points}"
-            msg_surf = self.font.render(msg, True, (0, 255, 0))
-            screen.blit(msg_surf, (self.rect.x + 20, detail_y + 140))
+        # Middle Pane: Backstory and Skills
+        mid_x = self.rect.x + 300
+        bs_title = self.font.render("Backstory:", True, (200, 200, 255))
+        screen.blit(bs_title, (mid_x, detail_y))
 
-        # Equipment and Inventory as before...
-        eq_y = detail_y + 40
-        eq_x = self.rect.x + 350
+        words = char.backstory.split()
+        lines = []
+        curr = ""
+        for w in words:
+            if self.small_font.size(curr + w + " ")[0] < 200: curr += w + " "
+            else: lines.append(curr); curr = w + " "
+        lines.append(curr)
+        for i, l in enumerate(lines[:5]):
+            surf = self.small_font.render(l, True, (200, 200, 200))
+            screen.blit(surf, (mid_x, detail_y + 30 + i * 15))
+
+        skill_y = detail_y + 120
+        sk_title = self.font.render("Skills:", True, (200, 200, 255))
+        screen.blit(sk_title, (mid_x, skill_y))
+        for i, skill in enumerate(char.skills[:4]):
+            sk_text = f"{skill.name}: {skill.description}"
+            surf = self.small_font.render(sk_text, True, (220, 220, 220))
+            screen.blit(surf, (mid_x, skill_y + 30 + i * 20))
+
+        # Right Pane: Equipment
+        eq_x = self.rect.x + 520
         eq_title = self.font.render("Equipment:", True, (200, 200, 255))
-        screen.blit(eq_title, (eq_x, eq_y))
-        eq_slots = [("Main Hand", char.equipment.main_hand), ("Body", char.equipment.body), ("Accessory", char.equipment.accessory)]
+        screen.blit(eq_title, (eq_x, detail_y))
+        eq_slots = [("Main Hand", char.equipment.main_hand), ("Body", char.equipment.body)]
         for i, (slot, item) in enumerate(eq_slots):
             item_name = item.name if item else "None"
-            surf = self.font.render(f"{slot}: {item_name}", True, (220, 220, 220))
-            screen.blit(surf, (eq_x, eq_y + 30 + i * 30))
+            surf = self.font.render(f"{slot}:", True, (150, 150, 150))
+            screen.blit(surf, (eq_x, detail_y + 30 + i * 40))
+            name_surf = self.small_font.render(item_name, True, (255, 255, 255))
+            screen.blit(name_surf, (eq_x, detail_y + 50 + i * 40))
 
-        inv_y = self.rect.y + 280
-        inv_title = self.font.render(f"Shared Inventory (Gold: {party.gold}, Food: {party.food}):", True, (200, 255, 200))
+        # Bottom Pane: Shared Inventory
+        inv_y = self.rect.y + 350
+        inv_title = self.font.render(f"Party Inventory (Gold: {party.gold}, Food: {party.food}):", True, (200, 255, 200))
         screen.blit(inv_title, (self.rect.x + 20, inv_y))
-        for i, item in enumerate(party.inventory[:8]):
-            surf = self.small_font.render(f"- {str(item)}", True, (200, 200, 200))
-            screen.blit(surf, (self.rect.x + 20, inv_y + 30 + i * 20))
+        for i, item in enumerate(party.inventory[:12]):
+            ix = self.rect.x + 20 + (i % 3) * 230
+            iy = inv_y + 30 + (i // 3) * 20
+            surf = self.small_font.render(f"- {str(item.name if hasattr(item, 'name') else item)}", True, (200, 200, 200))
+            screen.blit(surf, (ix, iy))
+
+        footer = "1-6: Switch | S: Save | L: Load | ESC/I: Close"
+        f_surf = self.small_font.render(footer, True, (150, 150, 150))
+        screen.blit(f_surf, (self.rect.x + 20, self.rect.bottom - 30))
 
     def handle_keydown(self, key):
         if key == pygame.K_1: self.char_idx = 0
@@ -88,10 +115,8 @@ class PartyView:
     def handle_click(self, pos, party: Party) -> bool:
         if not party.members: return False
         char = party.members[self.char_idx]
-        if char.attribute_points <= 0: return False
-
         for rect, attr in self.attr_rects:
-            if rect.collidepoint(pos):
+            if rect.collidepoint(pos) and char.attribute_points > 0:
                 if attr == "attack": char.attack += 1
                 elif attr == "defense": char.defense += 1
                 elif attr == "speed": char.speed += 1
