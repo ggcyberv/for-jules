@@ -1,13 +1,14 @@
 {
   "event_id": "crypt_whispers_01",
   "title": "Whispers from the Crypt",
-  "description": "As you approach the ancient ruins, a chilling whisper fills the air...",
+  "description": "As you approach the ancient ruins, a chilling whisper fills the air... The Mayor of Riverfall is looking for someone to cleanse this place.",
   "choices": [
     {
-      "text": "Investigate the whispers",
+      "text": "Accept the Quest",
       "outcome": {
-        "type": "encounter",
-        "enemy_type": "ghost"
+        "type": "message",
+        "text": "You accepted the Mayor's task.",
+        "start_quest": "clear_crypt_01"
       }
     },
     {

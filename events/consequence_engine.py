@@ -6,7 +6,6 @@ class ConsequenceEngine:
     def apply_consequence(outcome: Dict[str, Any]):
         state = GameState()
 
-        # Immediate consequences
         if "add_flag" in outcome:
             state.global_flags[outcome["add_flag"]] = True
 
@@ -20,7 +19,6 @@ class ConsequenceEngine:
         if "food" in outcome:
             state.party.food += outcome["food"]
 
-        # Fact logging for future triggers
         if "log_fact" in outcome:
             fact_id = outcome["log_fact"]
             state.global_flags[f"fact_{fact_id}"] = {
@@ -28,11 +26,9 @@ class ConsequenceEngine:
                 "data": outcome.get("fact_data", {})
             }
 
-        # Immediate POI addition
         if "add_poi" in outcome:
             poi_data = outcome["add_poi"]
             from world.location import Dungeon
-            # Example dungeon discovery from event
             poi_id = poi_data["id"]
             q, r = poi_data["q"], poi_data["r"]
             new_loc = Dungeon(poi_id=poi_id, name=poi_data["name"], q=q, r=r)
@@ -41,3 +37,11 @@ class ConsequenceEngine:
             if tile:
                 tile.poi_id = poi_id
                 tile.discovered = True
+
+        if "start_quest" in outcome:
+            quest_id = outcome["start_quest"]
+            state.quest_manager.start_quest(quest_id)
+
+        if "update_quest" in outcome:
+            update_data = outcome["update_quest"]
+            state.quest_manager.update_objective(update_data["target"], update_data.get("amount", 1))

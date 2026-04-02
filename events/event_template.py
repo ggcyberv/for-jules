@@ -2,6 +2,7 @@ import json
 import os
 from dataclasses import dataclass, field
 from typing import List, Dict, Any, Optional
+from engine.quest_manager import Quest, QuestObjective
 
 @dataclass
 class EventChoice:
@@ -46,6 +47,31 @@ class EventManager:
                         conditions=data.get("conditions", {})
                     )
                     self.templates[event_id] = template
+
+    def load_quests(self, directory: str, quest_manager):
+        if not os.path.exists(directory):
+            os.makedirs(directory, exist_ok=True)
+            return
+
+        for filename in os.listdir(directory):
+            if filename.endswith(".json"):
+                with open(os.path.join(directory, filename), "r") as f:
+                    data = json.load(f)
+                    objectives = [
+                        QuestObjective(
+                            description=o.get("description"),
+                            target_id=o.get("target_id"),
+                            target_count=o.get("target_count", 1)
+                        ) for o in data.get("objectives", [])
+                    ]
+                    quest = Quest(
+                        quest_id=data.get("quest_id"),
+                        title=data.get("title"),
+                        description=data.get("description"),
+                        objectives=objectives,
+                        rewards=data.get("rewards", {})
+                    )
+                    quest_manager.add_quest(quest)
 
     def get_event(self, event_id: str) -> Optional[EventTemplate]:
         return self.templates.get(event_id)

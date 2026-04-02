@@ -10,10 +10,12 @@ from world.world_generator import WorldGenerator
 from world.dungeon_generator import DungeonGenerator
 from party.party_manager import Party
 from party.character import Character
+from party.item import Item, Weapon, Armor
 from ui.overworld_view import OverworldView
 from ui.event_view import EventView
 from ui.dungeon_view import DungeonView
 from ui.town_view import TownView
+from ui.party_view import PartyView
 from events.event_trigger import EventTrigger
 from events.event_template import EventManager, EventTemplate, EventChoice
 from events.consequence_engine import ConsequenceEngine
@@ -32,15 +34,17 @@ class GameController:
         self.event_view = EventView(800, 600)
         self.dungeon_view = DungeonView(800, 600)
         self.town_view = TownView(800, 600)
+        self.party_view = PartyView(800, 600)
         self.event_manager = EventManager()
         self.event_manager.load_templates("data/events")
+        self.event_manager.load_quests("data/quests", self.state.quest_manager)
         self.clock = pygame.time.Clock()
         self.logs = ["Welcome to the Unbound Realm."]
         self.active_event: Optional[EventTemplate] = None
         self.active_town: Optional[Town] = None
+        self.show_party_screen = False
         self.current_tactic = TacticType.BALANCED
 
-        # Subscribe to events
         event_bus.subscribe("hex_discovered", self.on_hex_discovered)
         event_bus.subscribe("random_encounter", self.on_random_encounter)
         event_bus.subscribe("enter_location", self.on_enter_location)
@@ -60,7 +64,6 @@ class GameController:
         state.initialize(grid, party, seed, world_gen.locations)
         grid.get_tile(0, 0).discovered = True
 
-        # Register a starting faction
         from world.faction_system import Faction
         state.faction_system.register_faction(Faction("citizens", "Riverfall Citizens", "Local townsfolk."))
 
@@ -87,6 +90,7 @@ class GameController:
             self.logs.append(f"Entering dungeon: {loc.name}!")
             gen = DungeonGenerator(self.state.seed + loc.q + loc.r)
             self.state.active_dungeon = gen.generate(40, 20)
+            self.state.active_dungeon_id = poi_id
             self.state.dungeon_pos = self.state.active_dungeon.start_pos
             self.state.compute_fov()
 
@@ -118,8 +122,52 @@ class GameController:
                     self.logs.append("Party is full!")
             else:
                 self.logs.append("Not enough gold!")
+        elif outcome["type"] == "buy":
+            if self.state.party.gold >= outcome["cost"]:
+                self.state.party.gold -= outcome["cost"]
+                self.state.party.inventory.append(outcome["item"])
+                outcome["loc"].inventory.remove(outcome["item"])
+                self.logs.append(f"Purchased {outcome['item'].name}!")
+            else:
+                self.logs.append("Not enough gold!")
 
         self.active_event = None
+
+    def handle_town_node(self, node: TownNode):
+        if node.service_type == "healer":
+            cost = self.active_town.healing_cost
+            if self.state.party.gold >= cost:
+                self.state.party.gold -= cost
+                for m in self.state.party.members: m.hp = m.max_hp
+                self.logs.append("Party healed at the temple.")
+            else:
+                self.logs.append("Not enough gold for healing.")
+        elif node.service_type == "recruit":
+            if self.active_town.recruits:
+                recruit = self.active_town.recruits[0]
+                self.on_trigger_story_event("recruit_offer_" + self.active_town.poi_id,
+                                          title=f"New Recruit: {recruit.name}",
+                                          desc=f"A brave soul named {recruit.name} wants to join your party for {self.active_town.recruitment_cost} gold.",
+                                          choices=[
+                                              {"text": f"Recruit {recruit.name}", "outcome": {"type": "recruit", "recruit": recruit, "cost": self.active_town.recruitment_cost, "loc": self.active_town}},
+                                              {"text": "Maybe later", "outcome": {"type": "message", "text": "You declined the offer."}}
+                                          ])
+            else:
+                self.logs.append("No recruits available.")
+        elif node.service_type == "market":
+            if self.active_town.inventory:
+                item = self.active_town.inventory[0]
+                self.on_trigger_story_event("market_buy_" + self.active_town.poi_id,
+                                          title="Marketplace",
+                                          desc=f"The merchant offers a {item.name} for {item.value} gold.",
+                                          choices=[
+                                              {"text": f"Buy {item.name}", "outcome": {"type": "buy", "item": item, "cost": item.value, "loc": self.active_town}},
+                                              {"text": "Leave", "outcome": {"type": "message", "text": "You browsing finished."}}
+                                          ])
+            else:
+                self.logs.append("Market is empty.")
+        else:
+            self.logs.append(f"Visited {node.name}. (Service not implemented)")
 
     def run_overworld(self, event):
         if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
@@ -149,6 +197,8 @@ class GameController:
                 idx = (tactics_list.index(self.current_tactic) + 1) % len(tactics_list)
                 self.current_tactic = tactics_list[idx]
                 self.logs.append(f"Current Tactic: {self.current_tactic.value}")
+            elif event.key == pygame.K_i:
+                self.show_party_screen = True
 
     def run_dungeon(self, event):
         if event.type == pygame.KEYDOWN:
@@ -169,6 +219,10 @@ class GameController:
                     self.state.dungeon_pos = (nx, ny)
                     self.state.compute_fov()
                     if (nx, ny) == self.state.active_dungeon.exit_pos:
+                        quest = self.state.quest_manager.update_objective(f"dungeon_cleared_{self.state.active_dungeon_id}")
+                        if quest:
+                            self.logs.append(f"QUEST COMPLETE: {quest.title}!")
+                            self.state.party.gold += quest.rewards.get("gold", 0)
                         self.logs.append("Dungeon cleared!")
                         self.state.active_dungeon = None
 
@@ -182,30 +236,6 @@ class GameController:
             if event.key == pygame.K_ESCAPE:
                 self.active_town = None
                 self.logs.append("Left town.")
-
-    def handle_town_node(self, node: TownNode):
-        if node.service_type == "healer":
-            cost = self.active_town.healing_cost
-            if self.state.party.gold >= cost:
-                self.state.party.gold -= cost
-                for m in self.state.party.members: m.hp = m.max_hp
-                self.logs.append("Party healed at the temple.")
-            else:
-                self.logs.append("Not enough gold for healing.")
-        elif node.service_type == "recruit":
-            if self.active_town.recruits:
-                recruit = self.active_town.recruits[0]
-                self.on_trigger_story_event("recruit_offer_" + self.active_town.poi_id,
-                                          title=f"New Recruit: {recruit.name}",
-                                          desc=f"A brave soul named {recruit.name} wants to join your party for {self.active_town.recruitment_cost} gold.",
-                                          choices=[
-                                              {"text": f"Recruit {recruit.name}", "outcome": {"type": "recruit", "recruit": recruit, "cost": self.active_town.recruitment_cost, "loc": self.active_town}},
-                                              {"text": "Maybe later", "outcome": {"type": "message", "text": "You declined the offer."}}
-                                          ])
-            else:
-                self.logs.append("No recruits available.")
-        else:
-            self.logs.append(f"Visited {node.name}. (Service not implemented)")
 
     def run(self):
         while True:
@@ -221,6 +251,17 @@ class GameController:
                             self.resolve_choice(choice_idx)
                     continue
 
+                if self.show_party_screen:
+                    if event.type == pygame.KEYDOWN:
+                        if event.key == pygame.K_i or event.key == pygame.K_ESCAPE:
+                            self.show_party_screen = False
+                        else:
+                            self.party_view.handle_keydown(event.key)
+                    elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                        if self.party_view.handle_click(event.pos, self.state.party):
+                            self.logs.append("Attribute increased!")
+                    continue
+
                 if self.active_town:
                     self.run_town(event)
                 elif self.state.active_dungeon:
@@ -228,7 +269,9 @@ class GameController:
                 else:
                     self.run_overworld(event)
 
-            if self.active_town:
+            if self.show_party_screen:
+                self.party_view.render(self.screen, self.state.party)
+            elif self.active_town:
                 self.town_view.render(self.screen, self.active_town)
             elif self.state.active_dungeon:
                 self.dungeon_view.render(self.screen, self.state.active_dungeon, self.state.dungeon_pos)

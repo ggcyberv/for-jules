@@ -3,6 +3,7 @@ from world.hex_grid import HexGrid
 from party.party_manager import Party
 from world.faction_system import FactionSystem
 from world.dungeon_generator import DungeonMap
+from engine.quest_manager import QuestManager
 
 class GameState:
     _instance = None
@@ -18,7 +19,9 @@ class GameState:
             cls._instance.locations: Dict[str, Any] = {}
             cls._instance.faction_system: Optional[FactionSystem] = None
             cls._instance.active_dungeon: Optional[DungeonMap] = None
+            cls._instance.active_dungeon_id: Optional[str] = None
             cls._instance.dungeon_pos: Tuple[int, int] = (0, 0)
+            cls._instance.quest_manager: Optional[QuestManager] = None
         return cls._instance
 
     def initialize(self, world: HexGrid, party: Party, seed: int, locations: Dict[str, Any]):
@@ -29,7 +32,9 @@ class GameState:
         self.global_flags = {}
         self.locations = locations
         self.faction_system = FactionSystem()
+        self.quest_manager = QuestManager()
         self.active_dungeon = None
+        self.active_dungeon_id = None
 
     def advance_turn(self):
         self.turn += 1
@@ -38,11 +43,8 @@ class GameState:
 
     def compute_fov(self, radius: int = 5):
         if not self.active_dungeon: return
-
-        # Reset visibility
         for tile in self.active_dungeon.tiles.values():
             tile.visible = False
-
         cx, cy = self.dungeon_pos
         for x in range(cx - radius, cx + radius + 1):
             for y in range(cy - radius, cy + radius + 1):

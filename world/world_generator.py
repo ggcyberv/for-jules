@@ -3,6 +3,7 @@ from world.hex_grid import HexGrid
 from engine.rng_manager import RNGManager
 from world.location import Town, Dungeon, TownNode
 from party.character import Character
+from party.item import Weapon, Armor
 
 class WorldGenerator:
     def __init__(self, seed: int, settings: Dict[str, Any]):
@@ -14,7 +15,6 @@ class WorldGenerator:
     def generate(self) -> HexGrid:
         grid = HexGrid(self.width, self.height)
 
-        # Simple procedural generation logic
         for (q, r), tile in grid.tiles.items():
             noise_val = self.rng.get_float()
             if noise_val < 0.1:
@@ -29,17 +29,10 @@ class WorldGenerator:
             else:
                 tile.terrain_type = "plains"
                 tile.movement_cost = 1.0
-
-            # Initial danger rating
             tile.danger_rating = self.rng.get_float() * self.settings.get("danger_level", 0.5)
 
-        # Place Faction Capitals
-        capitals = {
-            "citizens": (0, 0),
-            "bandits": (self.width - 1, self.height - 1)
-        }
+        capitals = {"citizens": (0, 0), "bandits": (self.width - 1, self.height - 1)}
 
-        # Place a starting Town at citizens capital
         start_tile = grid.get_tile(0, 0)
         start_tile.terrain_type = "plains"
         start_tile.movement_cost = 1.0
@@ -53,10 +46,13 @@ class WorldGenerator:
             TownNode("guild", "Guild Hall", "Recruit new members.", "recruit")
         ]
         start_town.recruits = [Character("Brog", attack=14, defense=12, speed=4)]
+        start_town.inventory = [
+            Weapon("iron_sword", "Iron Sword", "A simple blade.", value=50, attack_bonus=3),
+            Armor("leather_vest", "Leather Vest", "Light protection.", value=30, defense_bonus=2)
+        ]
         start_town.faction_id = "citizens"
         self.locations["start_town"] = start_town
 
-        # Faction Territories (Voronoi)
         for (q, r), tile in grid.tiles.items():
             best_dist = 9999
             best_faction = None
@@ -67,11 +63,9 @@ class WorldGenerator:
                     best_faction = faction_id
             tile.faction_influence = best_faction
 
-        # Randomly place some Dungeons
         dungeon_count = 5
         all_coords = list(grid.tiles.keys())
         self.rng.shuffle(all_coords)
-
         placed = 0
         for q, r in all_coords:
             if (q, r) == (0, 0): continue

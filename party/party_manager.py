@@ -1,11 +1,11 @@
 from dataclasses import dataclass, field
-from typing import List, Dict, Tuple
+from typing import List, Dict, Tuple, Any
 from party.character import Character
 
 @dataclass
 class Party:
     members: List[Character] = field(default_factory=list)
-    inventory: List[str] = field(default_factory=list)
+    inventory: List[Any] = field(default_factory=list)
     gold: int = 100
     food: int = 50
     q: int = 0
@@ -29,9 +29,7 @@ class Party:
 
     def rest(self):
         self.current_ap = self.max_ap
-        # Consume food
         food_consumed = len(self.members) * 2
         self.food = max(0, self.food - food_consumed)
-        # Heal members slightly
         for member in self.members:
             member.hp = min(member.max_hp, member.hp + 5)
