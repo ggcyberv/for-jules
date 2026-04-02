@@ -1,0 +1,58 @@
+from typing import Dict, Any, List
+from world.hex_grid import HexGrid
+from engine.rng_manager import RNGManager
+from world.location import Town, Dungeon
+
+class WorldGenerator:
+    def __init__(self, seed: int, settings: Dict[str, Any]):
+        self.rng = RNGManager(seed)
+        self.settings = settings
+        self.width, self.height = settings.get("world_size", (100, 80))
+        self.locations: Dict[str, Any] = {}
+
+    def generate(self) -> HexGrid:
+        grid = HexGrid(self.width, self.height)
+
+        # Simple procedural generation logic
+        for (q, r), tile in grid.tiles.items():
+            noise_val = self.rng.get_float()
+            if noise_val < 0.1:
+                tile.terrain_type = "mountain"
+                tile.movement_cost = 3.0
+            elif noise_val < 0.3:
+                tile.terrain_type = "forest"
+                tile.movement_cost = 1.5
+            elif noise_val < 0.4:
+                tile.terrain_type = "water"
+                tile.movement_cost = 5.0
+            else:
+                tile.terrain_type = "plains"
+                tile.movement_cost = 1.0
+
+            # Initial danger rating
+            tile.danger_rating = self.rng.get_float() * self.settings.get("danger_level", 0.5)
+
+        # Place a starting Town
+        start_tile = grid.get_tile(0, 0)
+        start_tile.terrain_type = "plains"
+        start_tile.movement_cost = 1.0
+        start_tile.poi_id = "start_town"
+        self.locations["start_town"] = Town(poi_id="start_town", name="Riverfall", q=0, r=0)
+
+        # Randomly place some Dungeons
+        dungeon_count = 5
+        all_coords = list(grid.tiles.keys())
+        self.rng.shuffle(all_coords)
+
+        placed = 0
+        for q, r in all_coords:
+            if (q, r) == (0, 0): continue
+            tile = grid.get_tile(q, r)
+            if tile.terrain_type != "water":
+                poi_id = f"dungeon_{placed}"
+                tile.poi_id = poi_id
+                self.locations[poi_id] = Dungeon(poi_id=poi_id, name=f"Lost Crypt {placed}", q=q, r=r)
+                placed += 1
+                if placed >= dungeon_count: break
+
+        return grid

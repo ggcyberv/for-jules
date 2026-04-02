@@ -1,128 +1,102 @@
+import pygame
 import sys
-from engine.models import Player, Hero, POI, Stack, UnitType
-from engine.map import GameMap
-from engine.manager import GameManager
+import secrets
+from engine.game_state import GameState
+from engine.rng_manager import RNGManager
+from engine.event_bus import event_bus
+from world.world_generator import WorldGenerator
+from party.party_manager import Party
+from party.character import Character
+from ui.overworld_view import OverworldView
+from events.event_trigger import EventTrigger
+from combat.combat_simulator import CombatSimulator
+from world.location import Town, Dungeon
 
-def create_game():
-    # Define unit types
-    swordsman = UnitType("Swordsman", 5, 5, 20, 3, 5, 4, {"gold": 100}, 10, 1)
-    archer = UnitType("Archer", 6, 3, 15, 2, 6, 6, {"gold": 120}, 12, 1)
+class GameController:
+    def __init__(self):
+        pygame.init()
+        self.screen = pygame.display.set_mode((800, 600))
+        pygame.display.set_caption("Chronicles of the Unbound Realm")
+        self.state = self.setup_game()
+        self.view = OverworldView(800, 600)
+        self.clock = pygame.time.Clock()
+        self.logs = ["Welcome to the Unbound Realm."]
 
-    # Create map
-    game_map = GameMap(10, 10)
+        # Subscribe to events
+        event_bus.subscribe("hex_discovered", self.on_hex_discovered)
+        event_bus.subscribe("random_encounter", self.on_random_encounter)
+        event_bus.subscribe("enter_location", self.on_enter_location)
 
-    # Create POIs
-    town1 = POI("town1", "town", (1, 1), 5, income={"gold": 200}, recruitable_units=[swordsman, archer])
-    mine1 = POI("mine1", "mine", (3, 3), 1, income={"gold": 50})
-    fort1 = POI("fort1", "fort", (5, 5), 2, garrison=[Stack(swordsman, 10)])
+    def setup_game(self):
+        seed = secrets.randbits(32)
+        settings = {"world_size": (15, 10), "danger_level": 0.6}
+        world_gen = WorldGenerator(seed, settings)
+        grid = world_gen.generate()
 
-    game_map.set_poi(town1)
-    game_map.set_poi(mine1)
-    game_map.set_poi(fort1)
+        hero1 = Character("Alaric", attack=15, defense=10, speed=6)
+        hero2 = Character("Elara", attack=10, defense=12, speed=5)
+        party = Party(members=[hero1, hero2])
 
-    # Create players
-    p1 = Player(1, "Player 1")
-    h1 = Hero("Hero 1", 1, position=(0, 0), army=[Stack(swordsman, 20), Stack(archer, 10)])
-    p1.heroes.append(h1)
+        state = GameState()
+        state.initialize(grid, party, seed, world_gen.locations)
+        grid.get_tile(0, 0).discovered = True
+        return state
 
-    p2 = Player(2, "AI Opponent")
-    h2 = Hero("Hero 2", 2, position=(9, 9), army=[Stack(swordsman, 15)])
-    p2.heroes.append(h2)
+    def on_hex_discovered(self, q, r):
+        self.logs.append(f"Discovered hex at ({q}, {r})")
 
-    return GameManager(game_map, [p1, p2])
-
-def main():
-    manager = create_game()
-    print("Welcome to the Turn-Based Strategy Game Prototype!")
-    print("Commands: move x y, recruit unit qty, station unit qty direction, status, end, quit")
-    print("Direction: to_poi or to_hero")
-
-    while True:
-        player = manager.current_player
-        print(f"\n--- Turn {manager.turn_number} - {player.name}'s Turn ---")
-        print(f"Resources: {player.resources}")
-        print(f"Winning Streak: {player.winning_streak}")
-
-        if not player.heroes:
-            print("You have no heroes!")
-            manager.next_turn()
-            continue
-
-        hero = player.heroes[0]
-        tile = manager.game_map.get_tile(hero.position[0], hero.position[1])
-        poi = tile.poi if tile else None
-
-        print(f"Hero {hero.name} at {hero.position} (MP: {hero.movement_points})")
-        if poi:
-            owner_name = manager.players[poi.owner_id].name if poi.owner_id else "None"
-            print(f"At {poi.poi_type} {poi.poi_id} (Owned by: {owner_name})")
-            if poi.garrison:
-                print(f"  Garrison: {[f'{s.quantity}x {s.unit_type.name}' for s in poi.garrison]}")
-
-        print(f"Army: {[f'{s.quantity}x {s.unit_type.name}' for s in hero.army]}")
-
-        try:
-            line = sys.stdin.readline()
-            if not line: break
-            cmd = line.strip().split()
-        except EOFError:
-            break
-
-        if not cmd: continue
-
-        action = cmd[0].lower()
-        if action == "move" and len(cmd) == 3:
-            try:
-                x, y = int(cmd[1]), int(cmd[2])
-                result = manager.move_hero(hero, (x, y))
-                print(result["message"])
-                if result.get("interaction"):
-                    interaction = result['interaction']
-                    if interaction.get('message'):
-                        print(f"Interaction: {interaction['message']}")
-                    elif interaction.get('type'):
-                        print(f"Interaction: {interaction['type']}")
-
-                    if interaction.get('log'):
-                        print("Combat Log:")
-                        for entry in interaction['log'][-10:]:
-                            print(f"  {entry}")
-            except ValueError:
-                print("Invalid coordinates.")
-        elif action == "recruit" and len(cmd) == 3:
-            if not poi:
-                print("Not at a POI.")
-                continue
-            unit_name = cmd[1]
-            try:
-                qty = int(cmd[2])
-                result = manager.recruit_units(hero, poi, unit_name, qty)
-                print(result["message"])
-            except ValueError:
-                print("Invalid quantity.")
-        elif action == "station" and len(cmd) == 4:
-            if not poi:
-                print("Not at a POI.")
-                continue
-            unit_name = cmd[1]
-            try:
-                qty = int(cmd[2])
-                to_poi = cmd[3].lower() == "to_poi"
-                result = manager.station_units(hero, poi, unit_name, qty, to_poi)
-                print(result["message"])
-            except ValueError:
-                print("Invalid quantity.")
-        elif action == "status":
-            pass
-        elif action == "end":
-            manager.next_turn()
-            if player.winning_streak >= manager.win_streak_required:
-                print(f"\nCongratulations! {player.name} wins!")
-                break
-        elif action == "quit":
-            break
+    def on_random_encounter(self, q, r):
+        self.logs.append("Dangerous encounter!")
+        enemies = [Character("Goblin", hp=30, attack=8, defense=5, speed=4)]
+        result = CombatSimulator.simulate_battle(self.state.party.members, enemies)
+        if result["victory"]:
+            self.logs.append("Victory! Gained XP.")
         else:
-            print("Unknown command.")
+            self.logs.append("Defeat... The party is wounded.")
+
+    def on_enter_location(self, poi_id):
+        loc = self.state.locations.get(poi_id)
+        if isinstance(loc, Town):
+            self.logs.append(f"Entered town: {loc.name}. Party rested.")
+            self.state.party.gold += 10 # Sample town interaction
+            self.state.party.rest()
+        elif isinstance(loc, Dungeon):
+            self.logs.append(f"Entering dungeon: {loc.name}!")
+            enemies = [Character("Skeleton", hp=40, attack=10, defense=8, speed=3)]
+            result = CombatSimulator.simulate_battle(self.state.party.members, enemies)
+            if result["victory"]:
+                self.logs.append("Dungeon cleared! Found treasure.")
+                self.state.party.gold += 50
+                loc.is_cleared = True
+            else:
+                self.logs.append("Fled the dungeon in defeat.")
+
+    def run(self):
+        while True:
+            for event in pygame.event.get():
+                if event.type == pygame.QUIT:
+                    pygame.quit()
+                    sys.exit()
+
+                if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                    mx, my = event.pos
+                    tq, tr = self.view.pixel_to_hex(mx, my)
+                    dist = self.state.world.distance(self.state.party.q, self.state.party.r, tq, tr)
+                    if dist == 1:
+                        tile = self.state.world.get_tile(tq, tr)
+                        if tile and tile.terrain_type != "water":
+                            if self.state.party.move_to(tq, tr, int(tile.movement_cost)):
+                                EventTrigger.check_enter_hex(tq, tr)
+
+                if event.type == pygame.KEYDOWN:
+                    if event.key == pygame.K_SPACE:
+                        self.state.advance_turn()
+                        self.logs.append(f"Turn {self.state.turn} begins.")
+
+            self.view.render(self.screen, self.state.world, (self.state.party.q, self.state.party.r), self.logs)
+            pygame.display.flip()
+            self.clock.tick(30)
 
 if __name__ == "__main__":
-    main()
+    controller = GameController()
+    controller.run()
