@@ -2,6 +2,7 @@ from typing import Dict, Any, List
 from world.hex_grid import HexGrid
 from engine.rng_manager import RNGManager
 from world.location import Town, Dungeon
+from party.character import Character
 
 class WorldGenerator:
     def __init__(self, seed: int, settings: Dict[str, Any]):
@@ -37,7 +38,10 @@ class WorldGenerator:
         start_tile.terrain_type = "plains"
         start_tile.movement_cost = 1.0
         start_tile.poi_id = "start_town"
-        self.locations["start_town"] = Town(poi_id="start_town", name="Riverfall", q=0, r=0)
+
+        start_town = Town(poi_id="start_town", name="Riverfall", q=0, r=0)
+        start_town.recruits = [Character("Brog", attack=14, defense=12, speed=4)]
+        self.locations["start_town"] = start_town
 
         # Randomly place some Dungeons
         dungeon_count = 5

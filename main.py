@@ -2,15 +2,17 @@ import pygame
 import sys
 import secrets
 import os
-from typing import Optional
+from typing import Optional, List, Tuple
 from engine.game_state import GameState
 from engine.rng_manager import RNGManager
 from engine.event_bus import event_bus
 from world.world_generator import WorldGenerator
+from world.dungeon_generator import DungeonGenerator
 from party.party_manager import Party
 from party.character import Character
 from ui.overworld_view import OverworldView
 from ui.event_view import EventView
+from ui.dungeon_view import DungeonView
 from events.event_trigger import EventTrigger
 from events.event_template import EventManager, EventTemplate
 from combat.combat_simulator import CombatSimulator
@@ -23,8 +25,9 @@ class GameController:
         self.screen = pygame.display.set_mode((800, 600))
         pygame.display.set_caption("Chronicles of the Unbound Realm")
         self.state = self.setup_game()
-        self.view = OverworldView(800, 600)
+        self.overworld_view = OverworldView(800, 600)
         self.event_view = EventView(800, 600)
+        self.dungeon_view = DungeonView(800, 600)
         self.event_manager = EventManager()
         self.event_manager.load_templates("data/events")
         self.clock = pygame.time.Clock()
@@ -70,22 +73,33 @@ class GameController:
             self.logs.append(f"Entered town: {loc.name}. Party rested.")
             self.state.party.gold += 10
             self.state.party.rest()
+            # Recruitment logic
+            if loc.recruits:
+                recruit = loc.recruits[0]
+                self.on_trigger_story_event("recruit_offer_" + loc.poi_id,
+                                          title=f"New Recruit: {recruit.name}",
+                                          desc=f"A brave soul named {recruit.name} wants to join your party for {loc.recruitment_cost} gold.",
+                                          choices=[
+                                              {"text": f"Recruit {recruit.name}", "outcome": {"type": "recruit", "recruit": recruit, "cost": loc.recruitment_cost, "loc": loc}},
+                                              {"text": "Maybe later", "outcome": {"type": "message", "text": "You declined the offer."}}
+                                          ])
             # Sample story event trigger
-            if not self.state.global_flags.get("met_mayor"):
+            elif not self.state.global_flags.get("met_mayor"):
                 self.on_trigger_story_event("crypt_whispers_01")
         elif isinstance(loc, Dungeon):
             self.logs.append(f"Entering dungeon: {loc.name}!")
-            enemies = [Character("Skeleton", hp=40, attack=10, defense=8, speed=3)]
-            result = CombatSimulator.simulate_battle(self.state.party.members, enemies)
-            if result["victory"]:
-                self.logs.append("Dungeon cleared! Found treasure.")
-                self.state.party.gold += 50
-                loc.is_cleared = True
-            else:
-                self.logs.append("Fled the dungeon in defeat.")
+            gen = DungeonGenerator(self.state.seed + loc.q + loc.r)
+            self.state.active_dungeon = gen.generate(40, 20)
+            self.state.dungeon_pos = self.state.active_dungeon.start_pos
+            self.state.compute_fov()
 
-    def on_trigger_story_event(self, event_id):
-        event = self.event_manager.get_event(event_id)
+    def on_trigger_story_event(self, event_id, title=None, desc=None, choices=None):
+        if choices:
+            # Custom transient event
+            event = EventTemplate(event_id, title, desc, [pygame_rect_stub_choice(c["text"], c["outcome"]) for c in choices])
+        else:
+            event = self.event_manager.get_event(event_id)
+
         if event:
             self.active_event = event
 
@@ -96,8 +110,65 @@ class GameController:
             self.on_random_encounter(0, 0)
         elif outcome["type"] == "message":
             self.logs.append(outcome["text"])
+        elif outcome["type"] == "recruit":
+            if self.state.party.gold >= outcome["cost"]:
+                if self.state.party.add_member(outcome["recruit"]):
+                    self.state.party.gold -= outcome["cost"]
+                    outcome["loc"].recruits.remove(outcome["recruit"])
+                    self.logs.append(f"{outcome['recruit'].name} joined the party!")
+                else:
+                    self.logs.append("Party is full!")
+            else:
+                self.logs.append("Not enough gold!")
 
         self.active_event = None
+
+    def run_overworld(self, event):
+        if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+            mx, my = event.pos
+            tq, tr = self.overworld_view.pixel_to_hex(mx, my)
+            dist = self.state.world.distance(self.state.party.q, self.state.party.r, tq, tr)
+            if dist == 1:
+                tile = self.state.world.get_tile(tq, tr)
+                if tile and tile.terrain_type != "water":
+                    if self.state.party.move_to(tq, tr, int(tile.movement_cost)):
+                        EventTrigger.check_enter_hex(tq, tr)
+
+        if event.type == pygame.KEYDOWN:
+            if event.key == pygame.K_SPACE:
+                self.state.advance_turn()
+                self.logs.append(f"Turn {self.state.turn} begins.")
+            elif event.key == pygame.K_s:
+                SaveManager.save_game("data/saves/quicksave.sav")
+                self.logs.append("Game saved.")
+            elif event.key == pygame.K_l:
+                if SaveManager.load_game("data/saves/quicksave.sav"):
+                    self.logs.append("Game loaded.")
+                else:
+                    self.logs.append("Failed to load save.")
+
+    def run_dungeon(self, event):
+        if event.type == pygame.KEYDOWN:
+            dx, dy = 0, 0
+            if event.key == pygame.K_UP: dy = -1
+            elif event.key == pygame.K_DOWN: dy = 1
+            elif event.key == pygame.K_LEFT: dx = -1
+            elif event.key == pygame.K_RIGHT: dx = 1
+            elif event.key == pygame.K_ESCAPE:
+                self.state.active_dungeon = None
+                self.logs.append("Returned to Overworld.")
+                return
+
+            if dx != 0 or dy != 0:
+                nx, ny = self.state.dungeon_pos[0] + dx, self.state.dungeon_pos[1] + dy
+                tile = self.state.active_dungeon.get_tile(nx, ny)
+                if tile and not tile.is_wall:
+                    self.state.dungeon_pos = (nx, ny)
+                    self.state.compute_fov()
+                    # Exit check
+                    if (nx, ny) == self.state.active_dungeon.exit_pos:
+                        self.logs.append("Dungeon cleared!")
+                        self.state.active_dungeon = None
 
     def run(self):
         while True:
@@ -113,34 +184,24 @@ class GameController:
                             self.resolve_choice(choice_idx)
                     continue
 
-                if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-                    mx, my = event.pos
-                    tq, tr = self.view.pixel_to_hex(mx, my)
-                    dist = self.state.world.distance(self.state.party.q, self.state.party.r, tq, tr)
-                    if dist == 1:
-                        tile = self.state.world.get_tile(tq, tr)
-                        if tile and tile.terrain_type != "water":
-                            if self.state.party.move_to(tq, tr, int(tile.movement_cost)):
-                                EventTrigger.check_enter_hex(tq, tr)
+                if self.state.active_dungeon:
+                    self.run_dungeon(event)
+                else:
+                    self.run_overworld(event)
 
-                if event.type == pygame.KEYDOWN:
-                    if event.key == pygame.K_SPACE:
-                        self.state.advance_turn()
-                        self.logs.append(f"Turn {self.state.turn} begins.")
-                    elif event.key == pygame.K_s:
-                        SaveManager.save_game("data/saves/quicksave.sav")
-                        self.logs.append("Game saved.")
-                    elif event.key == pygame.K_l:
-                        if SaveManager.load_game("data/saves/quicksave.sav"):
-                            self.logs.append("Game loaded.")
-                        else:
-                            self.logs.append("Failed to load save.")
+            if self.state.active_dungeon:
+                self.dungeon_view.render(self.screen, self.state.active_dungeon, self.state.dungeon_pos)
+            else:
+                self.overworld_view.render(self.screen, self.state.world, (self.state.party.q, self.state.party.r), self.logs)
 
-            self.view.render(self.screen, self.state.world, (self.state.party.q, self.state.party.r), self.logs)
             if self.active_event:
                 self.event_view.render(self.screen, self.active_event)
             pygame.display.flip()
             self.clock.tick(30)
+
+def pygame_rect_stub_choice(text, outcome):
+    from events.event_template import EventChoice
+    return EventChoice(text, outcome)
 
 if __name__ == "__main__":
     controller = GameController()
