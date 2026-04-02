@@ -17,11 +17,12 @@ from ui.event_view import EventView
 from ui.dungeon_view import DungeonView
 from ui.town_view import TownView
 from ui.party_view import PartyView
+from ui.combat_view import CombatView
 from events.event_trigger import EventTrigger
 from events.event_template import EventManager, EventTemplate, EventChoice
 from events.consequence_engine import ConsequenceEngine
 from combat.combat_simulator import CombatSimulator
-from combat.tactics import TacticType
+from combat.tactics import TacticType, FormationType, AIPriority
 from world.location import Town, Dungeon, TownNode
 from engine.save_manager import SaveManager
 
@@ -39,6 +40,8 @@ class GameController:
         self.dungeon_view = DungeonView(800, 600)
         self.town_view = TownView(800, 600)
         self.party_view = PartyView(800, 600)
+        self.combat_view = CombatView(800, 600)
+
         self.event_manager = EventManager()
         self.event_manager.load_templates("data/events")
         self.event_manager.load_quests("data/quests", self.state.quest_manager)
@@ -47,14 +50,19 @@ class GameController:
         self.active_event: Optional[EventTemplate] = None
         self.active_town: Optional[Town] = None
         self.show_party_screen = False
+
+        # Combat State
+        self.active_combat = None
+        self.combat_log = []
         self.current_tactic = TacticType.BALANCED
+        self.current_formation = FormationType.NONE
+        self.current_priority = AIPriority.NEAREST
 
         event_bus.subscribe("hex_discovered", self.on_hex_discovered)
         event_bus.subscribe("random_encounter", self.on_random_encounter)
         event_bus.subscribe("enter_location", self.on_enter_location)
         event_bus.subscribe("trigger_story_event", self.on_trigger_story_event)
 
-        # Initial chunk check
         self.check_chunks(0, 0)
 
     def setup_game(self):
@@ -62,6 +70,7 @@ class GameController:
         settings = {"world_size": (15, 10), "danger_level": 0.6}
         self.world_gen = WorldGenerator(seed, settings)
         grid = HexGrid(chunk_size=10)
+        self.world_gen.generate_chunk(grid, 0, 0)
 
         hero1 = Character("Alaric", attack=15, defense=10, speed=6, backstory="A disgraced knight seeking redemption.")
         hero2 = Character("Elara", attack=10, defense=12, speed=5, backstory="A nomadic healer from the eastern plains.")
@@ -69,7 +78,10 @@ class GameController:
 
         state = GameState()
         state.initialize(grid, party, seed, self.world_gen.locations)
-        # 0,0 is handled by generate_chunk which is called in __init__
+        grid.get_tile(0, 0).discovered = True
+
+        from world.faction_system import Faction
+        state.faction_system.register_faction(Faction("citizens", "Riverfall Citizens", "Local townsfolk."))
         return state
 
     def check_chunks(self, q, r):
@@ -85,11 +97,8 @@ class GameController:
     def on_random_encounter(self, q, r):
         self.logs.append(f"Encounter! (Tactic: {self.current_tactic.value})")
         enemies = [Character("Goblin", hp=30, attack=8, defense=5, speed=4)]
-        result = CombatSimulator.simulate_battle(self.state.party.members, enemies, self.current_tactic)
-        if result["victory"]:
-            self.logs.append("Victory! Gained XP.")
-        else:
-            self.logs.append("Defeat... The party is wounded.")
+        self.active_combat = {"enemies": enemies, "turn": 1}
+        self.combat_log = ["A wild Goblin appears!"]
 
     def on_enter_location(self, poi_id):
         loc = self.state.locations.get(poi_id)
@@ -116,7 +125,6 @@ class GameController:
         choice = self.active_event.choices[choice_idx]
         outcome = choice.outcome
         ConsequenceEngine.apply_consequence(outcome)
-
         if outcome["type"] == "encounter":
             self.on_random_encounter(0, 0)
         elif outcome["type"] == "message":
@@ -127,19 +135,15 @@ class GameController:
                     self.state.party.gold -= outcome["cost"]
                     outcome["loc"].recruits.remove(outcome["recruit"])
                     self.logs.append(f"{outcome['recruit'].name} joined the party!")
-                else:
-                    self.logs.append("Party is full!")
-            else:
-                self.logs.append("Not enough gold!")
+                else: self.logs.append("Party is full!")
+            else: self.logs.append("Not enough gold!")
         elif outcome["type"] == "buy":
             if self.state.party.gold >= outcome["cost"]:
                 self.state.party.gold -= outcome["cost"]
                 self.state.party.inventory.append(outcome["item"])
                 outcome["loc"].inventory.remove(outcome["item"])
                 self.logs.append(f"Purchased {outcome['item'].name}!")
-            else:
-                self.logs.append("Not enough gold!")
-
+            else: self.logs.append("Not enough gold!")
         self.active_event = None
 
     def run_overworld(self, event):
@@ -152,24 +156,22 @@ class GameController:
                 if tile and tile.terrain_type != "water":
                     if self.state.party.move_to(tq, tr, int(tile.movement_cost)):
                         EventTrigger.check_enter_hex(tq, tr)
-
         if event.type == pygame.KEYDOWN:
             if event.key == pygame.K_SPACE:
                 self.state.advance_turn()
                 self.logs.append(f"Turn {self.state.turn} begins.")
+                if self.state.ironman:
+                    SaveManager.save_game("data/saves/ironman.sav")
             elif event.key == pygame.K_s:
                 SaveManager.save_game("data/saves/quicksave.sav")
                 self.logs.append("Game saved.")
             elif event.key == pygame.K_l:
-                if SaveManager.load_game("data/saves/quicksave.sav"):
-                    self.logs.append("Game loaded.")
-                else:
-                    self.logs.append("Failed to load save.")
+                if SaveManager.load_game("data/saves/quicksave.sav"): self.logs.append("Game loaded.")
+                else: self.logs.append("Failed to load save.")
             elif event.key == pygame.K_t:
-                tactics_list = list(TacticType)
-                idx = (tactics_list.index(self.current_tactic) + 1) % len(tactics_list)
-                self.current_tactic = tactics_list[idx]
-                self.logs.append(f"Current Tactic: {self.current_tactic.value}")
+                tl = list(TacticType)
+                self.current_tactic = tl[(tl.index(self.current_tactic) + 1) % len(tl)]
+                self.logs.append(f"Tactic: {self.current_tactic.value}")
             elif event.key == pygame.K_i:
                 self.show_party_screen = True
 
@@ -184,7 +186,6 @@ class GameController:
                 self.state.active_dungeon = None
                 self.logs.append("Returned to Overworld.")
                 return
-
             if dx != 0 or dy != 0:
                 nx, ny = self.state.dungeon_pos[0] + dx, self.state.dungeon_pos[1] + dy
                 tile = self.state.active_dungeon.get_tile(nx, ny)
@@ -202,13 +203,33 @@ class GameController:
     def run_town(self, event):
         if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
             idx = self.town_view.handle_click(event.pos)
-            if idx is not None:
-                node = self.active_town.nodes[idx]
-                self.handle_town_node(node)
+            if idx is not None: self.handle_town_node(self.active_town.nodes[idx])
         elif event.type == pygame.KEYDOWN:
             if event.key == pygame.K_ESCAPE:
                 self.active_town = None
                 self.logs.append("Left town.")
+
+    def run_combat(self, event):
+        if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+            action = self.combat_view.handle_click(event.pos)
+            if action:
+                if action == "retreat":
+                    self.logs.append("Party retreated from battle!")
+                    self.active_combat = None
+                else:
+                    int_log = CombatSimulator.resolve_intervention(action, self.state.party.members, self.active_combat["enemies"])
+                    self.combat_log.extend(int_log)
+        elif event.type == pygame.KEYDOWN:
+            if event.key == pygame.K_SPACE:
+                # Simulate a full round
+                res = CombatSimulator.simulate_battle(self.state.party.members, self.active_combat["enemies"], self.current_tactic, self.current_formation, self.current_priority)
+                self.combat_log.extend(res["log"])
+                if any(e.hp > 0 for e in self.active_combat["enemies"]) == False:
+                    self.logs.append("Combat Victory!")
+                    self.active_combat = None
+                elif any(m.hp > 0 for m in self.state.party.members) == False:
+                    self.logs.append("Party Wiped Out...")
+                    self.active_combat = None
 
     def handle_town_node(self, node: TownNode):
         if node.service_type == "healer":
@@ -216,81 +237,47 @@ class GameController:
             if self.state.party.gold >= cost:
                 self.state.party.gold -= cost
                 for m in self.state.party.members: m.hp = m.max_hp
-                self.logs.append("Party healed at the temple.")
-            else:
-                self.logs.append("Not enough gold for healing.")
+                self.logs.append("Party healed.")
+            else: self.logs.append("Not enough gold.")
         elif node.service_type == "recruit":
             if self.active_town.recruits:
-                recruit = self.active_town.recruits[0]
-                self.on_trigger_story_event("recruit_offer_" + self.active_town.poi_id,
-                                          title=f"New Recruit: {recruit.name}",
-                                          desc=f"A brave soul named {recruit.name} wants to join your party for {self.active_town.recruitment_cost} gold.",
-                                          choices=[
-                                              {"text": f"Recruit {recruit.name}", "outcome": {"type": "recruit", "recruit": recruit, "cost": self.active_town.recruitment_cost, "loc": self.active_town}},
-                                              {"text": "Maybe later", "outcome": {"type": "message", "text": "You declined the offer."}}
-                                          ])
-            else:
-                self.logs.append("No recruits available.")
+                r = self.active_town.recruits[0]
+                self.on_trigger_story_event("recruit_offer_" + self.active_town.poi_id, title=f"New Recruit: {r.name}", desc=f"{r.name} wants to join for {self.active_town.recruitment_cost} gold.", choices=[{"text": f"Recruit {r.name}", "outcome": {"type": "recruit", "recruit": r, "cost": self.active_town.recruitment_cost, "loc": self.active_town}}, {"text": "Maybe later", "outcome": {"type": "message", "text": "Declined."}}])
+            else: self.logs.append("No recruits.")
         elif node.service_type == "market":
             if self.active_town.inventory:
                 item = self.active_town.inventory[0]
-                self.on_trigger_story_event("market_buy_" + self.active_town.poi_id,
-                                          title="Marketplace",
-                                          desc=f"The merchant offers a {item.name} for {item.value} gold.",
-                                          choices=[
-                                              {"text": f"Buy {item.name}", "outcome": {"type": "buy", "item": item, "cost": item.value, "loc": self.active_town}},
-                                              {"text": "Leave", "outcome": {"type": "message", "text": "You browsing finished."}}
-                                          ])
-            else:
-                self.logs.append("Market is empty.")
-        else:
-            self.logs.append(f"Visited {node.name}. (Service not implemented)")
+                self.on_trigger_story_event("market_buy_" + self.active_town.poi_id, title="Market", desc=f"Buy {item.name} for {item.value} gold?", choices=[{"text": f"Buy {item.name}", "outcome": {"type": "buy", "item": item, "cost": item.value, "loc": self.active_town}}, {"text": "Leave", "outcome": {"type": "message", "text": "Browsing finished."}}])
+            else: self.logs.append("Market is empty.")
+        else: self.logs.append(f"Visited {node.name}. (Service not implemented)")
 
     def run(self):
         while True:
             for event in pygame.event.get():
-                if event.type == pygame.QUIT:
-                    pygame.quit()
-                    sys.exit()
-
+                if event.type == pygame.QUIT: pygame.quit(); sys.exit()
                 if self.active_event:
                     if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-                        choice_idx = self.event_view.handle_click(event.pos)
-                        if choice_idx is not None:
-                            self.resolve_choice(choice_idx)
+                        idx = self.event_view.handle_click(event.pos)
+                        if idx is not None: self.resolve_choice(idx)
                     continue
-
+                if self.active_combat: self.run_combat(event); continue
                 if self.show_party_screen:
                     if event.type == pygame.KEYDOWN:
-                        if event.key == pygame.K_i or event.key == pygame.K_ESCAPE:
-                            self.show_party_screen = False
-                        else:
-                            self.party_view.handle_keydown(event.key)
+                        if event.key in [pygame.K_i, pygame.K_ESCAPE]: self.show_party_screen = False
+                        else: self.party_view.handle_keydown(event.key)
                     elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-                        if self.party_view.handle_click(event.pos, self.state.party):
-                            self.logs.append("Attribute increased!")
+                        if self.party_view.handle_click(event.pos, self.state.party): self.logs.append("Attribute increased!")
                     continue
-
-                if self.active_town:
-                    self.run_town(event)
-                elif self.state.active_dungeon:
-                    self.run_dungeon(event)
-                else:
-                    self.run_overworld(event)
-
-            if self.show_party_screen:
-                self.party_view.render(self.screen, self.state.party)
-            elif self.active_town:
-                self.town_view.render(self.screen, self.active_town)
-            elif self.state.active_dungeon:
-                self.dungeon_view.render(self.screen, self.state.active_dungeon, self.state.dungeon_pos)
-            else:
-                self.overworld_view.render(self.screen, self.state.world, (self.state.party.q, self.state.party.r), self.logs)
-
-            if self.active_event:
-                self.event_view.render(self.screen, self.active_event)
-            pygame.display.flip()
-            self.clock.tick(30)
+                if self.active_town: self.run_town(event)
+                elif self.state.active_dungeon: self.run_dungeon(event)
+                else: self.run_overworld(event)
+            if self.active_combat: self.combat_view.render(self.screen, self.state.party.members, self.active_combat["enemies"], self.combat_log, self.active_combat["turn"])
+            elif self.show_party_screen: self.party_view.render(self.screen, self.state.party)
+            elif self.active_town: self.town_view.render(self.screen, self.active_town)
+            elif self.state.active_dungeon: self.dungeon_view.render(self.screen, self.state.active_dungeon, self.state.dungeon_pos)
+            else: self.overworld_view.render(self.screen, self.state.world, (self.state.party.q, self.state.party.r), self.logs)
+            if self.active_event: self.event_view.render(self.screen, self.active_event)
+            pygame.display.flip(); self.clock.tick(30)
 
 if __name__ == "__main__":
     controller = GameController()

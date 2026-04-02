@@ -4,6 +4,7 @@ from party.party_manager import Party
 from world.faction_system import FactionSystem
 from world.dungeon_generator import DungeonMap
 from engine.quest_manager import QuestManager
+from engine.lore_manager import LoreManager
 
 class GameState:
     _instance = None
@@ -22,6 +23,8 @@ class GameState:
             cls._instance.active_dungeon_id: Optional[str] = None
             cls._instance.dungeon_pos: Tuple[int, int] = (0, 0)
             cls._instance.quest_manager: Optional[QuestManager] = None
+            cls._instance.lore_manager: Optional[LoreManager] = None
+            cls._instance.ironman: bool = False
         return cls._instance
 
     def initialize(self, world: HexGrid, party: Party, seed: int, locations: Dict[str, Any]):
@@ -33,13 +36,15 @@ class GameState:
         self.locations = locations
         self.faction_system = FactionSystem()
         self.quest_manager = QuestManager()
+        self.lore_manager = LoreManager()
         self.active_dungeon = None
         self.active_dungeon_id = None
+        self.ironman = False
 
     def advance_turn(self):
         self.turn += 1
         if self.party:
-            self.party.rest() # Reset AP and consume food every turn for now
+            self.party.rest()
 
     def compute_fov(self, radius: int = 5):
         if not self.active_dungeon: return

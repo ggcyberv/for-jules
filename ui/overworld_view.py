@@ -11,31 +11,43 @@ class OverworldView:
         self.hex_size = hex_size
         self.font = pygame.font.SysFont("Arial", 12)
         self.large_font = pygame.font.SysFont("Arial", 18)
+        self.camera_offset = [0, 0]
 
     def hex_to_pixel(self, q: int, r: int) -> Tuple[float, float]:
+        # Pointy-top hex math
         x = self.hex_size * (3/2 * q)
         y = self.hex_size * (math.sqrt(3)/2 * q + math.sqrt(3) * r)
-        return x + 100, y + 100 # Offset for visibility
+        return x + self.camera_offset[0], y + self.camera_offset[1]
 
     def pixel_to_hex(self, px: float, py: float) -> Tuple[int, int]:
-        px -= 100
-        py -= 100
+        px -= self.camera_offset[0]
+        py -= self.camera_offset[1]
+
         q = (2/3 * px) / self.hex_size
         r = (-1/3 * px + math.sqrt(3)/3 * py) / self.hex_size
+
+        # Cube rounding
         x, y, z = q, r, -q - r
         rx, ry, rz = round(x), round(y), round(z)
         dx, dy, dz = abs(rx - x), abs(ry - y), abs(rz - z)
         if dx > dy and dx > dz: rx = -ry - rz
         elif dy > dz: ry = -rx - rz
         else: rz = -rx - ry
-        return rx, ry
+        return int(rx), int(ry)
+
+    def update_camera(self, party_pos: Tuple[int, int]):
+        # Calculate ideal pixel position of party
+        # Without offset
+        tx = self.hex_size * (3/2 * party_pos[0])
+        ty = self.hex_size * (math.sqrt(3)/2 * party_pos[0] + math.sqrt(3) * party_pos[1])
+
+        # Offset to center on screen
+        self.camera_offset[0] = self.screen_width // 2 - tx
+        self.camera_offset[1] = self.screen_height // 2 - ty
 
     def render(self, screen: pygame.Surface, grid: HexGrid, party_pos: Tuple[int, int], logs: List[str]):
+        self.update_camera(party_pos)
         screen.fill((30, 30, 30))
-
-        # Determine view bounds based on party
-        # For infinite map, we only render tiles in the grid.tiles dict
-        # but could optimize to only render within screen bounds
 
         for (q, r), tile in grid.tiles.items():
             px, py = self.hex_to_pixel(q, r)
@@ -57,11 +69,14 @@ class OverworldView:
                              py + self.hex_size * math.sin(angle_rad)))
 
             pygame.draw.polygon(screen, color, points)
+
+            # Faction Border logic
             border_color = (150, 150, 150)
             if tile.faction_influence == "citizens": border_color = (100, 100, 255)
             elif tile.faction_influence == "bandits": border_color = (255, 100, 100)
             pygame.draw.polygon(screen, border_color, points, 2)
 
+            # Draw POI
             if tile.poi_id:
                 poi_color = (255, 255, 0)
                 if "dungeon" in tile.poi_id or "loc" in tile.poi_id: poi_color = (200, 50, 50)

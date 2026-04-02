@@ -1,4 +1,6 @@
 import random
+import json
+import os
 from dataclasses import dataclass, field
 from typing import List, Tuple, Dict, Optional
 from engine.rng_manager import RNGManager
@@ -25,8 +27,17 @@ class DungeonMap:
 class DungeonGenerator:
     def __init__(self, seed: int):
         self.rng = RNGManager(seed)
+        self.room_templates = []
+        self._load_templates("data/dungeon_rooms")
 
-    def generate(self, width: int, height: int, num_rooms: int = 10, min_room_size: int = 3, max_room_size: int = 6) -> DungeonMap:
+    def _load_templates(self, directory: str):
+        if not os.path.exists(directory): return
+        for fn in os.listdir(directory):
+            if fn.endswith(".json"):
+                with open(os.path.join(directory, fn), "r") as f:
+                    self.room_templates.append(json.load(f))
+
+    def generate(self, width: int, height: int, num_rooms: int = 10) -> DungeonMap:
         dungeon = DungeonMap(width, height)
         for y in range(height):
             for x in range(width):
@@ -34,56 +45,56 @@ class DungeonGenerator:
 
         rooms = []
         for _ in range(num_rooms):
-            w = self.rng.get_int(min_room_size, max_room_size)
-            h = self.rng.get_int(min_room_size, max_room_size)
+            if self.room_templates and self.rng.get_float() < 0.5:
+                template = self.rng.choice(self.room_templates)
+                w, h = template["width"], template["height"]
+            else:
+                w = self.rng.get_int(3, 6)
+                h = self.rng.get_int(3, 6)
+                template = None
+
             x = self.rng.get_int(1, width - w - 1)
             y = self.rng.get_int(1, height - h - 1)
 
-            new_room = pygame_rect_stub(x, y, w, h) # Using a simple rect logic
-
-            # Check for overlaps
             intersects = False
-            for other_room in rooms:
-                if (x < other_room[0] + other_room[2] and x + w > other_room[0] and
-                    y < other_room[1] + other_room[3] and y + h > other_room[1]):
+            for other in rooms:
+                if (x < other[0] + other[2] and x + w > other[0] and
+                    y < other[1] + other[3] and y + h > other[1]):
                     intersects = True
                     break
 
             if not intersects:
-                self._create_room(dungeon, x, y, w, h)
+                self._create_room(dungeon, x, y, w, h, template)
                 if not rooms:
                     dungeon.start_pos = (x + w // 2, y + h // 2)
                 else:
-                    prev_x, prev_y, prev_w, prev_h = rooms[-1]
-                    self._create_h_tunnel(dungeon, prev_x + prev_w // 2, x + w // 2, prev_y + prev_h // 2)
-                    self._create_v_tunnel(dungeon, prev_y + prev_h // 2, y + h // 2, x + w // 2)
-
+                    px, py, pw, ph = rooms[-1]
+                    self._create_h_tunnel(dungeon, px + pw // 2, x + w // 2, py + ph // 2)
+                    self._create_v_tunnel(dungeon, py + ph // 2, y + h // 2, x + w // 2)
                 rooms.append((x, y, w, h))
 
         if rooms:
-            last_room = rooms[-1]
-            dungeon.exit_pos = (last_room[0] + last_room[2] // 2, last_room[1] + last_room[3] // 2)
-
+            lr = rooms[-1]
+            dungeon.exit_pos = (lr[0] + lr[2] // 2, lr[1] + lr[3] // 2)
         return dungeon
 
-    def _create_room(self, dungeon: DungeonMap, x: int, y: int, w: int, h: int):
+    def _create_room(self, dungeon, x, y, w, h, template):
         for rx in range(x, x + w):
             for ry in range(y, y + h):
                 tile = dungeon.get_tile(rx, ry)
-                if tile:
+                if not tile: continue
+                if template:
+                    char = template["tiles"][ry - y][rx - x]
+                    tile.is_wall = (char == "#")
+                else:
                     tile.is_wall = False
 
-    def _create_h_tunnel(self, dungeon: DungeonMap, x1: int, x2: int, y: int):
+    def _create_h_tunnel(self, dungeon, x1, x2, y):
         for x in range(min(x1, x2), max(x1, x2) + 1):
             tile = dungeon.get_tile(x, y)
-            if tile:
-                tile.is_wall = False
+            if tile: tile.is_wall = False
 
-    def _create_v_tunnel(self, dungeon: DungeonMap, y1: int, y2: int, x: int):
+    def _create_v_tunnel(self, dungeon, y1, y2, x):
         for y in range(min(y1, y2), max(y1, y2) + 1):
             tile = dungeon.get_tile(x, y)
-            if tile:
-                tile.is_wall = False
-
-def pygame_rect_stub(x, y, w, h):
-    return (x, y, w, h)
+            if tile: tile.is_wall = False
