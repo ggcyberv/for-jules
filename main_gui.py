@@ -4,15 +4,16 @@ from engine.models import Player, Hero, POI, Stack, UnitType
 from engine.map import GameMap
 from engine.manager import GameManager
 from engine.graphics import Renderer
+from engine.ai import BasicAI
 
 def create_game():
     # Define unit types
     swordsman = UnitType("Swordsman", 5, 5, 20, 3, 5, 4, {"gold": 100}, 10, 1)
     archer = UnitType("Archer", 6, 3, 15, 2, 6, 6, {"gold": 120}, 12, 1)
+    knight = UnitType("Knight", 10, 8, 50, 10, 15, 7, {"gold": 500}, 50, 1)
 
     # Create map
     game_map = GameMap(15, 15)
-    # Add some terrain
     for x in range(15):
         for y in range(15):
             tile = game_map.get_tile(x, y)
@@ -20,12 +21,14 @@ def create_game():
             if (x * y) % 11 == 0: tile.terrain_type = "mountain"
 
     # Create POIs
-    town1 = POI("town1", "town", (1, 1), 5, income={"gold": 200}, recruitable_units=[swordsman, archer])
+    town1 = POI("town1", "town", (1, 1), 5, income={"gold": 200}, recruitable_units=[swordsman, archer, knight])
     mine1 = POI("mine1", "mine", (5, 5), 1, income={"gold": 50})
+    mine2 = POI("mine2", "mine", (10, 5), 1, income={"gold": 50})
     fort1 = POI("fort1", "fort", (10, 10), 2, garrison=[Stack(swordsman, 10)])
 
     game_map.set_poi(town1)
     game_map.set_poi(mine1)
+    game_map.set_poi(mine2)
     game_map.set_poi(fort1)
 
     # Create players
@@ -41,13 +44,22 @@ def create_game():
 
 def main():
     manager = create_game()
-    renderer = Renderer(600, 600, 40)
+    ai = BasicAI(manager)
+    grid_size = 40
+    renderer = Renderer(600, 600, grid_size)
     clock = pygame.time.Clock()
 
-    print("GUI Started. Use arrow keys to move, Space to end turn, R to recruit, S to station.")
+    print("GUI Started. Left click to move hero, Space to end turn.")
 
     while True:
         player = manager.current_player
+
+        if player.player_id == 2: # AI's turn
+            print("AI is thinking...")
+            pygame.time.delay(500)
+            ai.execute_turn(player)
+            continue
+
         hero = player.heroes[0] if player.heroes else None
 
         for event in pygame.event.get():
@@ -55,23 +67,20 @@ def main():
                 pygame.quit()
                 sys.exit()
 
-            if event.type == pygame.KEYDOWN and hero:
-                target_pos = list(hero.position)
-                moved = False
+            if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1 and hero:
+                mx, my = event.pos
+                tx, ty = mx // grid_size, my // grid_size
+                result = manager.move_hero(hero, (tx, ty))
+                print(result["message"])
+                if result.get("interaction"):
+                    print(f"Interaction: {result['interaction']['type']}")
+                    if result['interaction'].get('xp_gained'):
+                        print(f"XP Gained: {result['interaction']['xp_gained']}")
 
-                if event.key == pygame.K_UP: target_pos[1] -= 1; moved = True
-                elif event.key == pygame.K_DOWN: target_pos[1] += 1; moved = True
-                elif event.key == pygame.K_LEFT: target_pos[0] -= 1; moved = True
-                elif event.key == pygame.K_RIGHT: target_pos[0] += 1; moved = True
-                elif event.key == pygame.K_SPACE:
+            if event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_SPACE:
                     manager.next_turn()
                     print(f"End turn. It's now {manager.current_player.name}'s turn.")
-
-                if moved:
-                    result = manager.move_hero(hero, tuple(target_pos))
-                    print(result["message"])
-                    if result.get("interaction"):
-                        print(f"Interaction: {result['interaction']['type']}")
 
         state = manager.get_render_state()
         renderer.render_map(state)

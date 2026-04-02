@@ -121,7 +121,9 @@ class GameManager:
             if combat_result.winner_id == hero.owner_id:
                 self._transfer_ownership(poi, hero.owner_id, old_owner_id)
                 poi.garrison = []
-                return {"type": "combat", "result": "win", "log": combat_result.log}
+                # Award XP
+                self._award_xp(hero, combat_result.xp_reward)
+                return {"type": "combat", "result": "win", "log": combat_result.log, "xp_gained": combat_result.xp_reward}
             else:
                 return {"type": "combat", "result": "loss", "log": combat_result.log}
         else:
@@ -144,6 +146,16 @@ class GameManager:
             if stack.stack_id in losses:
                 stack.quantity -= losses[stack.stack_id]
         army[:] = [s for s in army if s.quantity > 0]
+
+    def _award_xp(self, hero: Hero, amount: int):
+        hero.experience += amount
+        # Simple leveling formula: Level * 100 XP required for next level
+        xp_required = hero.level * 100
+        while hero.experience >= xp_required:
+            hero.experience -= xp_required
+            hero.level += 1
+            hero.max_movement_points += 2
+            xp_required = hero.level * 100
 
     def recruit_units(self, hero: Hero, poi: POI, unit_name: str, quantity: int) -> Dict[str, Any]:
         if poi.owner_id != hero.owner_id:

@@ -9,6 +9,7 @@ class CombatResult:
     army1_losses: Dict[str, int] # stack_id -> quantity lost
     army2_losses: Dict[str, int] # stack_id -> quantity lost
     log: List[str]
+    xp_reward: int = 0
 
 def resolve_combat(army1: List[Stack], army2: List[Stack], owner1_id: int, owner2_id: int) -> CombatResult:
     # Deep copy armies to simulate combat
@@ -18,8 +19,13 @@ def resolve_combat(army1: List[Stack], army2: List[Stack], owner1_id: int, owner
     a1_initial = {s.stack_id: s.quantity for s in army1}
     a2_initial = {s.stack_id: s.quantity for s in army2}
 
+    # Track top unit HP for each stack
+    a1_top_hp = {s.stack_id: s.unit_type.health for s in a1}
+    a2_top_hp = {s.stack_id: s.unit_type.health for s in a2}
+
     log = []
     round_num = 1
+    total_killed_value = 0
 
     while a1 and a2 and round_num <= 100:
         log.append(f"Round {round_num}")
@@ -41,11 +47,13 @@ def resolve_combat(army1: List[Stack], army2: List[Stack], owner1_id: int, owner
                 if not a2: break
                 target_idx = random.randint(0, len(a2) - 1)
                 target = a2[target_idx]
+                target_top_hp = a2_top_hp
                 attacker_side, defender_side = "Attacker", "Defender"
             else:
                 if not a1: break
                 target_idx = random.randint(0, len(a1) - 1)
                 target = a1[target_idx]
+                target_top_hp = a1_top_hp
                 attacker_side, defender_side = "Defender", "Attacker"
 
             # Calculate damage
@@ -58,12 +66,24 @@ def resolve_combat(army1: List[Stack], army2: List[Stack], owner1_id: int, owner
 
             total_damage = int(stack.quantity * base_dmg * damage_multiplier)
 
-            # Apply damage to target stack
-            units_killed = total_damage // target.unit_type.health
-            if units_killed > target.quantity:
-                units_killed = target.quantity
+            # Apply damage to top unit and then the rest of the stack
+            current_top_hp = target_top_hp[target.stack_id]
+
+            if total_damage >= current_top_hp:
+                remaining_damage = total_damage - current_top_hp
+                units_killed = 1 + (remaining_damage // target.unit_type.health)
+                if units_killed >= target.quantity:
+                    units_killed = target.quantity
+                    target_top_hp[target.stack_id] = 0
+                else:
+                    target_top_hp[target.stack_id] = target.unit_type.health - (remaining_damage % target.unit_type.health)
+            else:
+                units_killed = 0
+                target_top_hp[target.stack_id] -= total_damage
 
             target.quantity -= units_killed
+            if side == 'a1': total_killed_value += units_killed * target.unit_type.health
+
             log.append(f"{attacker_side} {stack.unit_type.name} hits {defender_side} {target.unit_type.name} for {total_damage} damage, killing {units_killed} units.")
 
             # Remove dead stacks
@@ -100,5 +120,6 @@ def resolve_combat(army1: List[Stack], army2: List[Stack], owner1_id: int, owner
         winner_id=winner_id,
         army1_losses=get_losses(a1_initial, a1),
         army2_losses=get_losses(a2_initial, a2),
-        log=log
+        log=log,
+        xp_reward=total_killed_value // 10
     )
