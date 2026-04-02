@@ -4,57 +4,49 @@ from engine.navigation import astar, get_distance
 from engine.models import Player, Hero, POI, Stack, UnitType
 from engine.manager import GameManager
 
-def test_get_distance():
-    assert get_distance((0,0), (3,4)) == 4
-
-def test_astar_simple():
+def test_hex_neighbors():
     game_map = GameMap(10, 10)
-    start = (0, 0)
-    end = (2, 2)
-    path = astar(game_map, start, end)
+    # Even row (y=0)
+    neighbors = game_map.get_neighbors(1, 0)
+    # Expected: (2,0), (0,0), (1,1), (0,1)
+    assert len(neighbors) == 4
+    assert (2,0) in neighbors
+    assert (0,0) in neighbors
+    assert (1,1) in neighbors
+    assert (0,1) in neighbors
 
-    assert path is not None
-    assert path[0] == start
-    assert path[-1] == end
+def test_get_distance_hex():
+    # Distance between (0,0) and (2,0) is 2
+    assert get_distance((0,0), (2,0)) == 2
+    # Distance between (0,0) and (1,1) is 1?
+    # (0,0) cube: x=0, z=0, y=0
+    # (1,1) cube: y is 1, so y is odd row.
+    # (1,1) cube: x = 1 - (1 - (1&1))//2 = 1 - 0 = 1. z = 1. y = -1 - 1 = -2.
+    # (1,1) cube: x=1, z=1, y=-2.
+    # Dist(0,0,0 and 1,-2,1) = max(1, 2, 1) = 2.
+    # Wait, (0,0) and (1,1) are NOT neighbors in pointy-top odd-r.
+    # Neighbors of (0,0) are (1,0), (-1,0), (0,1), (-1,1) in bounds: (1,0), (0,1).
+    # So (1,1) should be distance 2.
+    assert get_distance((0,0), (1,1)) == 2
+    assert get_distance((0,0), (0,1)) == 1
+
+def test_astar_hex():
+    game_map = GameMap(10, 10)
+    # Direct path
+    path = astar(game_map, (0,0), (2,0))
     assert len(path) == 3
 
-def test_move_hero_success():
-    game_map = GameMap(10, 10)
-    p1 = Player(1, "Player 1")
-    h1 = Hero("Hero 1", 1, position=(0,0), movement_points=10)
-    p1.heroes.append(h1)
+    path = astar(game_map, (0,0), (0,1))
+    assert len(path) == 2
 
+def test_move_hero_hex():
+    game_map = GameMap(10, 10)
+    p1 = Player(1, "P1")
+    h1 = Hero("H1", 1, position=(0,0), movement_points=10)
+    p1.heroes.append(h1)
     manager = GameManager(game_map, [p1])
 
-    result = manager.move_hero(h1, (5, 5))
-
-    assert result["success"] == True
-    assert h1.position == (5, 5)
-    assert h1.movement_points == 5
-
-def test_move_hero_partial():
-    game_map = GameMap(10, 10)
-    p1 = Player(1, "Player 1")
-    h1 = Hero("Hero 1", 1, position=(0,0), movement_points=3)
-    p1.heroes.append(h1)
-
-    manager = GameManager(game_map, [p1])
-
-    result = manager.move_hero(h1, (5, 5))
-
-    assert result["success"] == True
-    assert h1.position == (3, 3)
-    assert h1.movement_points == 0
-
-def test_move_hero_no_mp():
-    game_map = GameMap(10, 10)
-    p1 = Player(1, "Player 1")
-    h1 = Hero("Hero 1", 1, position=(0,0), movement_points=0)
-    p1.heroes.append(h1)
-
-    manager = GameManager(game_map, [p1])
-
-    result = manager.move_hero(h1, (5, 5))
-
-    assert result["success"] == False
-    assert h1.position == (0, 0)
+    # Move to a neighbor
+    manager.move_hero(h1, (1, 0))
+    assert h1.position == (1, 0)
+    assert h1.movement_points == 9

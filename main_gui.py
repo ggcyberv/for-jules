@@ -1,5 +1,6 @@
 import pygame
 import sys
+import math
 from engine.models import Player, Hero, POI, Stack, UnitType
 from engine.map import GameMap
 from engine.manager import GameManager
@@ -42,14 +43,37 @@ def create_game():
 
     return GameManager(game_map, [p1, p2])
 
+def pixel_to_hex(px, py, size):
+    # Adjust for offset in renderer
+    width = math.sqrt(3) * size
+    px -= width
+    py -= size
+
+    # Pointy top fractional axial coordinates
+    q = (math.sqrt(3)/3 * px - 1/3 * py) / size
+    r = (2/3 * py) / size
+
+    # Round cube
+    x, y, z = q, r, -q - r
+    rx, ry, rz = round(x), round(y), round(z)
+    dx, dy, dz = abs(rx - x), abs(ry - y), abs(rz - z)
+    if dx > dy and dx > dz: rx = -ry - rz
+    elif dy > dz: ry = -rx - rz
+    else: rz = -rx - ry
+
+    # Convert cube to pointy-top odd-r offset
+    col = int(rx + (ry - (ry & 1)) // 2)
+    row = int(ry)
+    return col, row
+
 def main():
     manager = create_game()
     ai = BasicAI(manager)
-    grid_size = 40
-    renderer = Renderer(600, 600, grid_size)
+    hex_size = 25
+    renderer = Renderer(800, 600, hex_size)
     clock = pygame.time.Clock()
 
-    print("GUI Started. Left click to move hero, Space to end turn.")
+    print("GUI Started (Hex Map). Left click to move hero, Space to end turn.")
 
     while True:
         player = manager.current_player
@@ -69,7 +93,7 @@ def main():
 
             if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1 and hero:
                 mx, my = event.pos
-                tx, ty = mx // grid_size, my // grid_size
+                tx, ty = pixel_to_hex(mx, my, hex_size)
                 result = manager.move_hero(hero, (tx, ty))
                 print(result["message"])
                 if result.get("interaction"):

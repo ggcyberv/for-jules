@@ -29,3 +29,22 @@ class GameMap:
         tile = self.get_tile(x, y)
         if tile:
             tile.poi = poi
+
+    def get_neighbors(self, x: int, y: int) -> List[Tuple[int, int]]:
+        """
+        Get 6 hexagonal neighbors using 'pointy-topped odd-r' offset coordinates.
+        """
+        neighbors = []
+        if y % 2 == 0:
+            # Even row: (x+1,y), (x-1,y), (x,y-1), (x-1,y-1), (x,y+1), (x-1,y+1)
+            dirs = [(+1, 0), (-1, 0), (0, -1), (-1, -1), (0, +1), (-1, +1)]
+        else:
+            # Odd row: (x+1,y), (x-1,y), (x,y-1), (x+1,y-1), (x,y+1), (x+1,y+1)
+            dirs = [(+1, 0), (-1, 0), (0, -1), (+1, -1), (0, +1), (+1, +1)]
+
+        for dx, dy in dirs:
+            nx, ny = x + dx, y + dy
+            if 0 <= nx < self.width and 0 <= ny < self.height:
+                neighbors.append((nx, ny))
+
+        return neighbors
