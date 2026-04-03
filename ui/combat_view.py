@@ -88,6 +88,14 @@ class CombatView:
         self.button_rects = []
         btn_y = 510
         actions = ["heal", "strike", "taunt", "focus", "retreat"]
+
+        # Add hero skills as actions
+        for hero in party:
+            if hero.hp > 0:
+                for skill in hero.skills:
+                    if skill.name.lower() not in actions:
+                        actions.insert(0, skill.name.lower())
+
         mx, my = pygame.mouse.get_pos()
         for action in actions:
             rect = pygame.Rect(self.width // 2 - 100, btn_y, 200, 25)
@@ -105,8 +113,14 @@ class CombatView:
         surf = self.font.render(text, True, (200, 200, 200))
         screen.blit(surf, (self.width // 2 - surf.get_width() // 2, self.height - 30))
 
-    def handle_click(self, pos) -> Optional[str]:
+    def handle_click(self, pos, party: List[Character]) -> Optional[str]:
         actions = ["heal", "strike", "taunt", "focus", "retreat"]
+        for hero in party:
+            if hero.hp > 0:
+                for skill in hero.skills:
+                    if skill.name.lower() not in actions:
+                        actions.insert(0, skill.name.lower())
+
         for i, rect in enumerate(self.button_rects):
             if rect.collidepoint(pos):
                 return actions[i]

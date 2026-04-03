@@ -38,6 +38,7 @@ class GameState:
             cls._instance.consecutive_wait_turns: int = 0
             cls._instance.last_pos: Tuple[int, int] = (0, 0)
             cls._instance.world_facts: List[WorldFact] = []
+            cls._instance.timed_events: List[Dict[str, Any]] = []
         return cls._instance
 
     def initialize(self, world: HexGrid, party: Party, seed: int, locations: Dict[str, Any]):

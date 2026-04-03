@@ -1,7 +1,7 @@
 from typing import Dict, Any, List, Tuple
 from world.hex_grid import HexGrid, HexTile
 from engine.rng_manager import RNGManager
-from world.location import Town, Dungeon, TownNode
+from world.location import Town, Dungeon, TownNode, Location
 from party.character import Character, Skill
 from party.item import Weapon, Armor
 
@@ -61,7 +61,8 @@ class WorldGenerator:
                 if (q, r) != (0, 0) and rng.get_float() < (0.01 + loot_abundance * 0.03):
                     poi_id = f"loc_{q}_{r}"
                     tile.poi_id = poi_id
-                    if rng.get_float() < urbanization:
+                    roll = rng.get_float()
+                    if roll < urbanization:
                         town = Town(poi_id, f"Outpost {q},{r}", q, r)
                         # Add a recruit with backstory
                         recruit = Character(
@@ -71,8 +72,12 @@ class WorldGenerator:
                         recruit.skills = [Skill("Defense", "Better shielding.")]
                         town.recruits = [recruit]
                         self.locations[poi_id] = town
-                    else:
+                    elif roll < urbanization + 0.3:
                         self.locations[poi_id] = Dungeon(poi_id, f"Ruins {q},{r}", q, r)
+                    elif roll < urbanization + 0.5:
+                        self.locations[poi_id] = Location(poi_id, f"Ancient Shrine {q},{r}", q, r, "shrine")
+                    else:
+                        self.locations[poi_id] = Location(poi_id, f"Abandoned Mine {q},{r}", q, r, "resource_node")
 
                 grid.add_tile(tile)
 
@@ -84,7 +89,9 @@ class WorldGenerator:
             start_town.nodes = [
                 TownNode("market", "Market", "Trade and buy supplies.", "market"),
                 TownNode("healer", "Healer", "Heal your party.", "healer"),
-                TownNode("guild", "Guild", "Find new companions.", "recruit")
+                TownNode("guild", "Guild", "Find new companions.", "guild"),
+                TownNode("blacksmith", "Blacksmith", "Upgrade equipment.", "blacksmith"),
+                TownNode("tavern", "Tavern", "Rest and hear rumors.", "tavern")
             ]
             start_town.inventory = [Weapon("iron_sword", "Iron Sword", "Simple blade.", 50, 3)]
             recruit = Character("Brog", backstory="A former miner looking for glory.")

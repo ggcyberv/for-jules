@@ -163,6 +163,19 @@ class CombatSimulator:
     @staticmethod
     def resolve_intervention(action_type: str, party_members: List[Character], enemies: List[Character]):
         log = []
+        # Check if action is a skill name
+        for hero in party_members:
+            if hero.hp > 0:
+                for skill in hero.skills:
+                    if skill.name.lower() == action_type.lower():
+                        target_list = [e for e in enemies if e.hp > 0]
+                        if target_list:
+                            target = random.choice(target_list)
+                            dmg = int(hero.effective_attack * 1.5)
+                            target.hp = max(0, target.hp - dmg)
+                            log.append(f"{hero.name} uses {skill.name}! Hits {target.name} for {dmg} damage!")
+                            return log
+
         if action_type == "heal":
             target = min(party_members, key=lambda m: m.hp / m.max_hp)
             heal_amt = 20

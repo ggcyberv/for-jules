@@ -23,6 +23,9 @@ class Party:
     def move_to(self, q: int, r: int, cost: float):
         self.forced_march = False
         if self.current_ap >= cost:
+            # Consume stamina
+            for m in self.members:
+                m.stamina = max(0, m.stamina - int(cost * 5))
             self.q = q
             self.r = r
             self.current_ap -= cost
@@ -44,3 +47,4 @@ class Party:
         self.food = max(0, self.food - food_consumed)
         for member in self.members:
             member.hp = min(member.max_hp, member.hp + 5)
+            member.stamina = min(member.max_stamina, member.stamina + 20)

@@ -116,6 +116,15 @@ class GameController:
             self.state.active_dungeon_id = poi_id
             self.state.dungeon_pos = self.state.active_dungeon.start_pos
             self.state.compute_fov()
+        elif loc.location_type == "shrine":
+            self.logs.append(f"You visited {loc.name}. The party feels blessed.")
+            for m in self.state.party.members:
+                m.morale = min(m.max_morale, m.morale + 20)
+                m.stamina = min(m.max_stamina, m.max_stamina + 10)
+        elif loc.location_type == "resource_node":
+            amount = random.randint(10, 30)
+            self.state.party.gold += amount
+            self.logs.append(f"Scavenged {amount} gold from {loc.name}.")
 
     def on_trigger_story_event(self, event_id, title=None, desc=None, choices=None):
         if choices:
@@ -171,6 +180,23 @@ class GameController:
         if event.type == pygame.KEYDOWN:
             if event.key == pygame.K_SPACE:
                 self.state.advance_turn()
+
+                # Check Timed Events
+                new_timed = []
+                for event_data in self.state.timed_events:
+                    if event_data["trigger_turn"] <= self.state.turn:
+                        self.on_trigger_story_event(event_data["event_id"])
+                    else:
+                        new_timed.append(event_data)
+                self.state.timed_events = new_timed
+
+                # Check Quest Deadlines
+                for q_id, quest in self.state.quest_manager.quests.items():
+                    if quest.is_active and not quest.is_finished and quest.deadline_turn:
+                        if self.state.turn > quest.deadline_turn:
+                            quest.is_finished = True
+                            self.logs.append(f"QUEST FAILED: {quest.title} - The deadline has passed.")
+
                 EventTrigger.check_wait()
                 EventTrigger.check_time()
                 self.logs.append(f"Turn {self.state.turn} begins.")
@@ -234,7 +260,7 @@ class GameController:
     def run_combat(self, event):
         self.audio.play_ambient("combat")
         if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-            action = self.combat_view.handle_click(event.pos)
+            action = self.combat_view.handle_click(event.pos, self.state.party.members)
             if action:
                 if action == "retreat":
                     self.logs.append("Party retreated from battle!")
@@ -308,6 +334,14 @@ class GameController:
                 self.on_trigger_story_event("quest_offer_" + quest.quest_id, title=f"Quest: {quest.title}", desc=f"{quest.description}", choices=[{"text": "Accept Quest", "outcome": {"type": "message", "text": f"Accepted {quest.title}!", "start_quest": quest.quest_id}}, {"text": "Decline", "outcome": {"type": "message", "text": "Maybe another time."}}])
             else:
                 self.logs.append("The quest board is currently empty.")
+        elif node.service_type == "blacksmith":
+            self.on_trigger_story_event("blacksmith_service", title="Blacksmith", desc="I can sharpen your blades for 30 gold.", choices=[{"text": "Upgrade Weapons", "outcome": {"type": "message", "text": "Your weapons feel sharper."}}, {"text": "Leave", "outcome": {"type": "message", "text": "Come back when you have coin."}}])
+        elif node.service_type == "tavern":
+            if self.state.party.gold >= 20:
+                self.state.party.gold -= 20
+                for m in self.state.party.members: m.stamina = m.max_stamina
+                self.logs.append("Restored party stamina at the tavern.")
+            else: self.logs.append("Not enough gold for a round of drinks.")
         else:
             self.logs.append(f"Visited {node.name}. (Service not implemented)")
 

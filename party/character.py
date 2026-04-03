@@ -34,6 +34,8 @@ class Character:
     luck: int = 0
     morale: int = 50
     max_morale: int = 100
+    stamina: int = 100
+    max_stamina: int = 100
 
     skills: List[Skill] = field(default_factory=list)
     relationships: Dict[str, int] = field(default_factory=dict)
@@ -43,16 +45,24 @@ class Character:
     combat_log: List[str] = field(default_factory=list)
 
     @property
+    def fatigue_penalty(self) -> float:
+        if self.stamina < 20: return 0.2 # 20% reduction
+        if self.stamina < 50: return 0.1 # 10% reduction
+        return 0.0
+
+    @property
     def effective_attack(self) -> int:
         bonus = self.equipment.main_hand.attack_bonus if self.equipment.main_hand else 0
         penalty = sum(a.stat_penalty.get("attack", 0) for a in self.afflictions)
-        return max(1, self.attack + bonus - penalty)
+        base_eff = self.attack + bonus - penalty
+        return max(1, int(base_eff * (1.0 - self.fatigue_penalty)))
 
     @property
     def effective_defense(self) -> int:
         bonus = self.equipment.body.defense_bonus if self.equipment.body else 0
         penalty = sum(a.stat_penalty.get("defense", 0) for a in self.afflictions)
-        return max(1, self.defense + bonus - penalty)
+        base_eff = self.defense + bonus - penalty
+        return max(1, int(base_eff * (1.0 - self.fatigue_penalty)))
 
     @property
     def effective_speed(self) -> int:

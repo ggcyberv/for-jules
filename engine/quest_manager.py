@@ -18,6 +18,7 @@ class Quest:
     rewards: Dict[str, Any] = field(default_factory=dict)
     is_active: bool = False
     is_finished: bool = False
+    deadline_turn: Optional[int] = None
 
 class QuestManager:
     def __init__(self):
