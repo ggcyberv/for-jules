@@ -78,6 +78,12 @@ class CombatSimulator:
         for unit, side in all_units:
             if unit.hp <= 0: continue
 
+            # Status: Stun check
+            if hasattr(unit, 'status_effects') and "stun" in unit.status_effects:
+                log.append(f"{unit.name} is stunned and skips their turn!")
+                unit.status_effects.remove("stun")
+                continue
+
             # Morale Check
             if unit.morale < 15 and random.random() < 0.4:
                 log.append(f"{unit.name}'s morale breaks! They flee from the frontlines!")
@@ -130,6 +136,12 @@ class CombatSimulator:
             damage = max(1, int((atk - (dfn // 2)) * dmg_mult))
             target.hp = max(0, target.hp - damage)
             log.append(f"{attacker_name} attacks {defender_name} for {damage} damage!")
+
+            # Apply Status Effects on certain conditions
+            if not hasattr(target, 'status_effects'): target.status_effects = []
+            if "Skeleton" in attacker_name and random.random() < 0.2:
+                target.status_effects.append("stun")
+                log.append(f"{target.name} is STUNNED by the bone-crushing blow!")
 
             # Morale Reduction on damage
             if damage > 15:

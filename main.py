@@ -281,8 +281,15 @@ class GameController:
             action = self.combat_view.handle_click(event.pos, self.state.party.members)
             if action:
                 if action == "retreat":
-                    self.logs.append("Party retreated from battle!")
-                    self.active_combat = None
+                    if random.random() < 0.6: # 60% chance to escape
+                        self.logs.append("Party successfully retreated from battle!")
+                        self.active_combat = None
+                    else:
+                        self.logs.append("Retreat failed! You are cornered!")
+                        # Skip player turn and simulate enemy round? Or just log.
+                        res = CombatSimulator.simulate_round([], self.active_combat["enemies"], self.active_combat["turn"], self.current_tactic, self.current_formation, self.current_priority)
+                        self.combat_log.extend(res["log"])
+                        self.active_combat["turn"] += 1
                 else:
                     int_log = CombatSimulator.resolve_intervention(action, self.state.party.members, self.active_combat["enemies"])
                     self.combat_log.extend(int_log)

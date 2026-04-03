@@ -56,6 +56,9 @@ class WorldGenerator:
 
                 # Use urbanization and loot_abundance settings
                 urbanization = self.settings.get("urbanization", 0.4)
+                # Boost urbanization near capitals
+                if best_dist < 20: urbanization += 0.2
+
                 loot_abundance = self.settings.get("loot_abundance", 0.5)
 
                 if (q, r) != (0, 0) and rng.get_float() < (0.01 + loot_abundance * 0.03):

@@ -65,6 +65,12 @@ class NPCParty:
 
     def update(self, world, target_pos=None):
         from world.hex_grid import HexGrid
+
+        # Claim territory
+        tile = world.get_tile(self.q, self.r)
+        if tile:
+            tile.faction_influence = self.faction_id
+
         if self.behavior == "chase" and target_pos:
             # Simple chase logic
             neighbors = world.get_neighbors(self.q, self.r)

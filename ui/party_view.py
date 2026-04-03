@@ -21,7 +21,7 @@ class PartyView:
     def render(self, screen: pygame.Surface, party: Party):
         UIHelper.draw_frame(screen, self.rect)
 
-        cat_tabs = ["Party", "Lore & Secrets", "Combat History", "World History"]
+        cat_tabs = ["Party", "Journal", "Lore & Secrets", "Combat History", "World History"]
         mx, my = pygame.mouse.get_pos()
         for i, cat in enumerate(cat_tabs):
             tab_id = cat.lower().split()[0]
@@ -37,6 +37,8 @@ class PartyView:
             self._render_logs(screen, party)
         elif self.tab == "world":
             self._render_world_history(screen)
+        elif self.tab == "journal":
+            self._render_journal(screen)
 
     def _render_party(self, screen, party):
         mx, my = pygame.mouse.get_pos()
@@ -174,6 +176,38 @@ class PartyView:
             screen.blit(self.small_font.render(rel_text, True, (220, 220, 220)), (rx + 20, ry))
             ry += 20
 
+    def _render_journal(self, screen):
+        state = GameState()
+        title = self.large_font.render("Quest Journal", True, COLOR_TEXT_GOLD)
+        screen.blit(title, (self.rect.x + 20, self.rect.y + 20))
+        y = self.rect.y + 70
+
+        active = [q for q in state.quest_manager.quests.values() if q.is_active and not q.is_finished]
+        finished = [q for q in state.quest_manager.quests.values() if q.is_finished]
+
+        # Active Quests
+        a_title = self.font.render("Active Quests:", True, (200, 200, 255))
+        screen.blit(a_title, (self.rect.x + 20, y))
+        y += 30
+        if not active:
+            screen.blit(self.small_font.render("No active quests.", True, (150, 150, 150)), (self.rect.x + 40, y))
+            y += 30
+        else:
+            for q in active:
+                screen.blit(self.font.render(q.title, True, COLOR_TEXT_WHITE), (self.rect.x + 40, y))
+                y += 20
+                y += UIHelper.render_text_wrapped(screen, q.description, (self.rect.x + 60, y), self.small_font, self.width - 100)
+                y += 10
+
+        # Finished Quests
+        y += 20
+        f_title = self.font.render("Completed Quests:", True, (200, 255, 200))
+        screen.blit(f_title, (self.rect.x + 20, y))
+        y += 30
+        for q in finished:
+            screen.blit(self.small_font.render(f"- {q.title}", True, (200, 200, 200)), (self.rect.x + 40, y))
+            y += 20
+
     def _render_logs(self, screen, party):
         char = party.members[self.char_idx] if party.members else None
         title = self.large_font.render(f"Combat History: {char.name if char else ''}", True, (255, 215, 0))
@@ -189,7 +223,7 @@ class PartyView:
 
     def handle_keydown(self, key):
         if key == pygame.K_TAB:
-            tabs = ["party", "lore", "combat", "world"]
+            tabs = ["party", "journal", "lore", "combat", "world"]
             self.tab = tabs[(tabs.index(self.tab) + 1) % len(tabs)]
         elif self.tab in ["party", "combat"]:
             if key == pygame.K_1: self.char_idx = 0
