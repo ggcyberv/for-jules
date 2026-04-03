@@ -26,6 +26,7 @@ from combat.combat_simulator import CombatSimulator
 from combat.tactics import TacticType, FormationType, AIPriority
 from world.location import Town, Dungeon, TownNode
 from engine.save_manager import SaveManager
+from engine.audio_manager import AudioManager
 
 class GameController:
     def __init__(self):
@@ -33,6 +34,7 @@ class GameController:
         self.screen = pygame.display.set_mode((800, 600))
         pygame.display.set_caption("Chronicles of the Unbound Realm")
 
+        self.audio = AudioManager()
         self.world_gen = None
         self.state = self.setup_game()
 
@@ -149,6 +151,7 @@ class GameController:
         self.active_event = None
 
     def run_overworld(self, event):
+        self.audio.play_ambient("overworld")
         if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
             mx, my = event.pos
             tq, tr = self.overworld_view.pixel_to_hex(mx, my)
@@ -187,6 +190,7 @@ class GameController:
                 self.show_party_screen = True
 
     def run_dungeon(self, event):
+        self.audio.play_ambient("dungeon")
         if event.type == pygame.KEYDOWN:
             dx, dy = 0, 0
             if event.key == pygame.K_UP: dy = -1
@@ -228,6 +232,7 @@ class GameController:
                 self.logs.append("Left town.")
 
     def run_combat(self, event):
+        self.audio.play_ambient("combat")
         if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
             action = self.combat_view.handle_click(event.pos)
             if action:
@@ -265,8 +270,13 @@ class GameController:
                 # Check outcome
                 if not any(e.hp > 0 for e in self.active_combat["enemies"]):
                     xp = len(self.active_combat["enemies"]) * 20
-                    for m in self.state.party.members:
-                        if m.hp > 0: m.gain_xp(xp)
+                    # Success builds bonds
+                    for m1 in self.state.party.members:
+                        if m1.hp > 0:
+                            m1.gain_xp(xp)
+                            for m2 in self.state.party.members:
+                                if m1 != m2 and m2.hp > 0:
+                                    m1.adjust_relationship(m2.name, 2)
                     self.logs.append(f"Combat Victory! Gained {xp} XP.")
                     self.active_combat = None
                 elif not any(m.hp > 0 for m in self.state.party.members):
@@ -291,6 +301,13 @@ class GameController:
                 item = self.active_town.inventory[0]
                 self.on_trigger_story_event("market_buy_" + self.active_town.poi_id, title="Market", desc=f"Buy {item.name} for {item.value} gold?", choices=[{"text": f"Buy {item.name}", "outcome": {"type": "buy", "item": item, "cost": item.value, "loc": self.active_town}}, {"text": "Leave", "outcome": {"type": "message", "text": "Browsing finished."}}])
             else: self.logs.append("Market is empty.")
+        elif node.service_type == "guild":
+            available_quests = [q for q in self.state.quest_manager.quests.values() if not q.is_active and not q.is_finished]
+            if available_quests:
+                quest = available_quests[0]
+                self.on_trigger_story_event("quest_offer_" + quest.quest_id, title=f"Quest: {quest.title}", desc=f"{quest.description}", choices=[{"text": "Accept Quest", "outcome": {"type": "message", "text": f"Accepted {quest.title}!", "start_quest": quest.quest_id}}, {"text": "Decline", "outcome": {"type": "message", "text": "Maybe another time."}}])
+            else:
+                self.logs.append("The quest board is currently empty.")
         else:
             self.logs.append(f"Visited {node.name}. (Service not implemented)")
 

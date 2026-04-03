@@ -71,6 +71,10 @@ class Character:
         if self.xp >= self.level * 100:
             self._level_up()
 
+    def adjust_relationship(self, other_name: str, amount: int):
+        self.relationships[other_name] = self.relationships.get(other_name, 0) + amount
+        self.relationships[other_name] = max(-100, min(100, self.relationships[other_name]))
+
     def _level_up(self):
         self.xp -= self.level * 100
         self.level += 1

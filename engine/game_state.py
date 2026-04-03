@@ -5,6 +5,16 @@ from world.faction_system import FactionSystem
 from world.dungeon_generator import DungeonMap
 from engine.quest_manager import QuestManager
 from engine.lore_manager import LoreManager
+from dataclasses import dataclass, field
+from typing import List, Dict, Any, Tuple, Optional
+
+@dataclass
+class WorldFact:
+    fact_id: str
+    turn_recorded: int
+    actors: List[str]
+    description: str
+    data: Dict[str, Any] = field(default_factory=dict)
 
 class GameState:
     _instance = None
@@ -27,6 +37,7 @@ class GameState:
             cls._instance.ironman: bool = False
             cls._instance.consecutive_wait_turns: int = 0
             cls._instance.last_pos: Tuple[int, int] = (0, 0)
+            cls._instance.world_facts: List[WorldFact] = []
         return cls._instance
 
     def initialize(self, world: HexGrid, party: Party, seed: int, locations: Dict[str, Any]):

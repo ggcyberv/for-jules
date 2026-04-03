@@ -53,6 +53,13 @@ def verify_visuals():
     party_view.render(screen, party)
     pygame.image.save(screen, os.path.join(output_dir, "verification_party.png"))
 
+    # Verify World History Tab
+    party_view.tab = "world"
+    from engine.game_state import WorldFact
+    state.world_facts.append(WorldFact("test_fact", 1, ["Alaric"], "Saved a traveler from wolves."))
+    party_view.render(screen, party)
+    pygame.image.save(screen, os.path.join(output_dir, "verification_history.png"))
+
     # Verify Town UI
     from ui.town_view import TownView
     from world.location import Town, TownNode

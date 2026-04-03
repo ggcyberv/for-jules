@@ -21,7 +21,7 @@ class PartyView:
     def render(self, screen: pygame.Surface, party: Party):
         UIHelper.draw_frame(screen, self.rect)
 
-        cat_tabs = ["Party", "Lore & Secrets", "Combat History"]
+        cat_tabs = ["Party", "Lore & Secrets", "Combat History", "World History"]
         mx, my = pygame.mouse.get_pos()
         for i, cat in enumerate(cat_tabs):
             tab_id = cat.lower().split()[0]
@@ -35,6 +35,8 @@ class PartyView:
             self._render_lore(screen)
         elif self.tab == "combat":
             self._render_logs(screen, party)
+        elif self.tab == "world":
+            self._render_world_history(screen)
 
     def _render_party(self, screen, party):
         mx, my = pygame.mouse.get_pos()
@@ -100,6 +102,14 @@ class PartyView:
             surf = self.small_font.render(f"{skill.name}: {skill.description}", True, (220, 220, 220))
             screen.blit(surf, (mid_x, skill_y + 30 + i * 20))
 
+        rel_y = skill_y + 110
+        rel_title = self.font.render("Relationships:", True, (200, 200, 255))
+        screen.blit(rel_title, (mid_x, rel_y))
+        for i, (name, score) in enumerate(char.relationships.items()):
+            status = "Friendly" if score > 10 else ("Cold" if score < -10 else "Neutral")
+            surf = self.small_font.render(f"{name}: {score} ({status})", True, (220, 220, 220))
+            screen.blit(surf, (mid_x, rel_y + 30 + i * 20))
+
         eq_x = self.rect.x + 520
         eq_title = self.font.render("Equipment:", True, (200, 200, 255))
         screen.blit(eq_title, (eq_x, detail_y))
@@ -131,6 +141,39 @@ class PartyView:
                 f_title = self.font.render(frag.title, True, (200, 200, 255)); screen.blit(f_title, (self.rect.x + 20, y)); y += 25
                 f_content = self.small_font.render(frag.content, True, (220, 220, 220)); screen.blit(f_content, (self.rect.x + 40, y)); y += 30
 
+    def _render_world_history(self, screen):
+        state = GameState()
+        title = self.large_font.render("World History & Faction Relations", True, COLOR_TEXT_GOLD)
+        screen.blit(title, (self.rect.x + 20, self.rect.y + 20))
+
+        # History
+        y = self.rect.y + 70
+        h_title = self.font.render("History:", True, (200, 200, 255))
+        screen.blit(h_title, (self.rect.x + 20, y))
+        y += 30
+        if not state.world_facts:
+            surf = self.font.render("The history of this realm is yet to be written.", True, (150, 150, 150))
+            screen.blit(surf, (self.rect.x + 40, y))
+            y += 40
+        else:
+            for fact in state.world_facts[-5:]:
+                f_text = f"Turn {fact.turn_recorded}: {fact.description}"
+                y += UIHelper.render_text_wrapped(screen, f_text, (self.rect.x + 40, y), self.small_font, self.width // 2 - 60)
+                y += 5
+
+        # Faction Relations
+        ry = self.rect.y + 70
+        rx = self.rect.x + self.width // 2
+        r_title = self.font.render("Faction Diplomacy:", True, (200, 200, 255))
+        screen.blit(r_title, (rx, ry))
+        ry += 30
+        for pair, score in state.faction_system.relations.items():
+            status = "War" if score <= -50 else ("Allied" if score >= 50 else "Neutral")
+            f1, f2 = pair
+            rel_text = f"{f1.capitalize()} - {f2.capitalize()}: {score} ({status})"
+            screen.blit(self.small_font.render(rel_text, True, (220, 220, 220)), (rx + 20, ry))
+            ry += 20
+
     def _render_logs(self, screen, party):
         char = party.members[self.char_idx] if party.members else None
         title = self.large_font.render(f"Combat History: {char.name if char else ''}", True, (255, 215, 0))
@@ -146,7 +189,7 @@ class PartyView:
 
     def handle_keydown(self, key):
         if key == pygame.K_TAB:
-            tabs = ["party", "lore", "combat"]
+            tabs = ["party", "lore", "combat", "world"]
             self.tab = tabs[(tabs.index(self.tab) + 1) % len(tabs)]
         elif self.tab in ["party", "combat"]:
             if key == pygame.K_1: self.char_idx = 0
