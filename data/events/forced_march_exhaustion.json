@@ -1,0 +1,14 @@
+{
+  "event_id": "forced_march_exhaustion",
+  "title": "Forced March!",
+  "description": "The party pushes themselves beyond their limits to cover more ground. Exhaustion sets in, and everyone feels the strain.",
+  "choices": [
+    {
+      "text": "Press on",
+      "outcome": {
+        "type": "message",
+        "text": "Your resolve is tested, but you move forward."
+      }
+    }
+  ]
+}

@@ -18,6 +18,25 @@ class EventTemplate:
     choices: List[EventChoice] = field(default_factory=list)
     conditions: Dict[str, Any] = field(default_factory=dict)
 
+    def check_conditions(self, state) -> bool:
+        """Checks if the global state meets all conditions for this event."""
+        for cond_key, cond_val in self.conditions.items():
+            if cond_key == "min_gold" and state.party.gold < cond_val:
+                return False
+            if cond_key == "min_turn" and state.turn < cond_val:
+                return False
+            if cond_key == "max_turn" and state.turn > cond_val:
+                return False
+            if cond_key == "required_flag" and not state.global_flags.get(cond_val):
+                return False
+            if cond_key == "forbidden_flag" and state.global_flags.get(cond_val):
+                return False
+            if cond_key == "min_rep":
+                faction_id, min_val = cond_val.get("faction"), cond_val.get("value")
+                if state.faction_system.get_reputation(faction_id) < min_val:
+                    return False
+        return True
+
 class EventManager:
     def __init__(self):
         self.templates: Dict[str, EventTemplate] = {}

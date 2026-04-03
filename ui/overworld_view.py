@@ -122,6 +122,9 @@ class OverworldView:
         hint_surf = self.font.render(hint_text, True, (150, 150, 150))
         screen.blit(hint_surf, (10, 10))
 
+        # Minimap
+        self._render_minimap(screen, grid, party_pos)
+
         # Improved Tooltip handling
         mx, my = pygame.mouse.get_pos()
         tq, tr = self.pixel_to_hex(mx, my)
@@ -130,6 +133,32 @@ class OverworldView:
             loc = state.locations.get(tile.poi_id)
             if loc:
                 self._render_tooltip(screen, mx, my, f"{loc.name} ({loc.location_type})")
+
+    def _render_minimap(self, screen, grid, party_pos):
+        mini_size = 120
+        mini_rect = pygame.Rect(10, self.screen_height - mini_size - 10, mini_size, mini_size)
+        UIHelper.draw_frame(screen, mini_rect, border_color=(100, 100, 100), bg_color=(10, 10, 10), border_width=1)
+
+        # Center of minimap corresponds to party_pos
+        scale = mini_size / 20 # Show 20 hexes across
+        for (q, r), tile in grid.tiles.items():
+            if not tile.discovered: continue
+
+            dq, dr = q - party_pos[0], r - party_pos[1]
+            if abs(dq) > 10 or abs(dr) > 10: continue
+
+            mx = mini_rect.centerx + dq * scale
+            my = mini_rect.centery + dr * scale
+
+            color = (50, 120, 50)
+            if tile.terrain_type == "mountain": color = (100, 100, 100)
+            elif tile.terrain_type == "water": color = (50, 50, 200)
+            elif tile.poi_id: color = COLOR_TEXT_GOLD
+
+            pygame.draw.rect(screen, color, (mx - scale/2, my - scale/2, scale - 1, scale - 1))
+
+        # Party dot
+        pygame.draw.circle(screen, (255, 255, 255), mini_rect.center, 3)
 
     def _render_tooltip(self, screen, x, y, text):
         surf = self.medium_font.render(text, True, COLOR_TEXT_WHITE)

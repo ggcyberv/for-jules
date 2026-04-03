@@ -12,6 +12,7 @@ class DungeonTile:
     is_wall: bool = True
     explored: bool = False
     visible: bool = False
+    trap_id: Optional[str] = None
 
 @dataclass
 class DungeonMap:
@@ -65,6 +66,13 @@ class DungeonGenerator:
 
             if not intersects:
                 self._create_room(dungeon, x, y, w, h, template)
+                # Randomly place traps in the room
+                for _ in range(self.rng.get_int(1, 3)):
+                    tx = self.rng.get_int(x, x + w - 1)
+                    ty = self.rng.get_int(y, y + h - 1)
+                    tile = dungeon.get_tile(tx, ty)
+                    if tile and not tile.is_wall:
+                        tile.trap_id = "poison_dart" if self.rng.get_float() < 0.5 else "spike_trap"
                 if not rooms:
                     dungeon.start_pos = (x + w // 2, y + h // 2)
                 else:

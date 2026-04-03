@@ -32,6 +32,8 @@ class Character:
     accuracy: int = 80 # Percentage
     critical_chance: int = 5 # Percentage
     luck: int = 0
+    morale: int = 50
+    max_morale: int = 100
 
     skills: List[Skill] = field(default_factory=list)
     relationships: Dict[str, int] = field(default_factory=dict)

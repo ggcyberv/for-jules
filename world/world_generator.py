@@ -10,7 +10,12 @@ class WorldGenerator:
         self.base_seed = seed
         self.settings = settings
         self.locations: Dict[str, Any] = {}
-        self.capitals = {"citizens": (0, 0), "bandits": (100, 100)}
+        self.capitals = {
+            "citizens": (0, 0),
+            "bandits": (100, 100),
+            "nomads": (-100, 50),
+            "undead": (50, -100)
+        }
 
     def generate_chunk(self, grid: HexGrid, cq: int, cr: int):
         if (cq, cr) in grid.generated_chunks:
@@ -49,10 +54,14 @@ class WorldGenerator:
                         best_faction = faction_id
                 tile.faction_influence = best_faction
 
-                if (q, r) != (0, 0) and rng.get_float() < 0.02:
+                # Use urbanization and loot_abundance settings
+                urbanization = self.settings.get("urbanization", 0.4)
+                loot_abundance = self.settings.get("loot_abundance", 0.5)
+
+                if (q, r) != (0, 0) and rng.get_float() < (0.01 + loot_abundance * 0.03):
                     poi_id = f"loc_{q}_{r}"
                     tile.poi_id = poi_id
-                    if rng.get_float() < 0.3:
+                    if rng.get_float() < urbanization:
                         town = Town(poi_id, f"Outpost {q},{r}", q, r)
                         # Add a recruit with backstory
                         recruit = Character(

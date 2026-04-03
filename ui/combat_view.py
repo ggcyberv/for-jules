@@ -87,7 +87,7 @@ class CombatView:
         # Interventions
         self.button_rects = []
         btn_y = 510
-        actions = ["heal", "strike", "retreat"]
+        actions = ["heal", "strike", "taunt", "focus", "retreat"]
         mx, my = pygame.mouse.get_pos()
         for action in actions:
             rect = pygame.Rect(self.width // 2 - 100, btn_y, 200, 25)
@@ -106,7 +106,7 @@ class CombatView:
         screen.blit(surf, (self.width // 2 - surf.get_width() // 2, self.height - 30))
 
     def handle_click(self, pos) -> Optional[str]:
-        actions = ["heal", "strike", "retreat"]
+        actions = ["heal", "strike", "taunt", "focus", "retreat"]
         for i, rect in enumerate(self.button_rects):
             if rect.collidepoint(pos):
                 return actions[i]

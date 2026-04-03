@@ -25,6 +25,8 @@ class GameState:
             cls._instance.quest_manager: Optional[QuestManager] = None
             cls._instance.lore_manager: Optional[LoreManager] = None
             cls._instance.ironman: bool = False
+            cls._instance.consecutive_wait_turns: int = 0
+            cls._instance.last_pos: Tuple[int, int] = (0, 0)
         return cls._instance
 
     def initialize(self, world: HexGrid, party: Party, seed: int, locations: Dict[str, Any]):
@@ -45,6 +47,11 @@ class GameState:
         self.turn += 1
         if self.party:
             self.party.rest()
+            if (self.party.q, self.party.r) == self.last_pos:
+                self.consecutive_wait_turns += 1
+            else:
+                self.consecutive_wait_turns = 0
+                self.last_pos = (self.party.q, self.party.r)
 
     def compute_fov(self, radius: int = 5):
         if not self.active_dungeon: return

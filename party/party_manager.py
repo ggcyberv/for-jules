@@ -10,8 +10,9 @@ class Party:
     food: int = 50
     q: int = 0
     r: int = 0
-    max_ap: int = 10
-    current_ap: int = 10
+    max_ap: float = 10.0
+    current_ap: float = 10.0
+    forced_march: bool = False
 
     def add_member(self, character: Character):
         if len(self.members) < 6:
@@ -19,11 +20,21 @@ class Party:
             return True
         return False
 
-    def move_to(self, q: int, r: int, cost: int):
+    def move_to(self, q: int, r: int, cost: float):
+        self.forced_march = False
         if self.current_ap >= cost:
             self.q = q
             self.r = r
             self.current_ap -= cost
+            return True
+        elif len(self.members) > 0 and all(m.hp > 5 for m in self.members):
+            # Forced march at the cost of HP
+            self.q = q
+            self.r = r
+            self.current_ap = 0
+            self.forced_march = True
+            for m in self.members:
+                m.hp -= 5
             return True
         return False
 

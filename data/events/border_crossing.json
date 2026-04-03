@@ -1,0 +1,14 @@
+{
+  "event_id": "border_crossing",
+  "title": "Faction Borders",
+  "description": "You have crossed the border into a new territory. The atmosphere shifts as you see the insignias of a different faction displayed on roadside markers.",
+  "choices": [
+    {
+      "text": "Remain cautious",
+      "outcome": {
+        "type": "message",
+        "text": "The party keeps a low profile while traveling through these lands."
+      }
+    }
+  ]
+}

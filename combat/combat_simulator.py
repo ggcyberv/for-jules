@@ -78,6 +78,12 @@ class CombatSimulator:
         for unit, side in all_units:
             if unit.hp <= 0: continue
 
+            # Morale Check
+            if unit.morale < 15 and random.random() < 0.4:
+                log.append(f"{unit.name}'s morale breaks! They flee from the frontlines!")
+                unit.hp = 0 # Simplified 'fleeing' as out of combat
+                continue
+
             if side == "party":
                 targets = [e for e in enemies if e.hp > 0]
                 if not targets: break
@@ -125,8 +131,16 @@ class CombatSimulator:
             target.hp = max(0, target.hp - damage)
             log.append(f"{attacker_name} attacks {defender_name} for {damage} damage!")
 
+            # Morale Reduction on damage
+            if damage > 15:
+                target.morale = max(0, target.morale - 5)
+
             if target.hp <= 0:
                 log.append(f"{defender_name} falls!")
+                # Significant morale loss for allies
+                for u, s in all_units:
+                    if s == side: u.morale = max(0, u.morale - 10)
+
                 if side == "enemy":
                     CombatSimulator._check_for_injury(target, log)
 
@@ -161,4 +175,16 @@ class CombatSimulator:
                 dmg = 15
                 target.hp = max(0, target.hp - dmg)
                 log.append(f"Divine intervention: Smited {target.name} for {dmg} damage!")
+        elif action_type == "taunt":
+            for m in party_members:
+                if m.hp > 0:
+                    m.defense += 5
+                    m.morale = min(m.max_morale, m.morale + 10)
+            log.append("Divine intervention: Party morale restored and defense fortified!")
+        elif action_type == "focus":
+            for m in party_members:
+                if m.hp > 0:
+                    m.accuracy += 15
+                    m.critical_chance += 10
+            log.append("Divine intervention: Party accuracy and crit chance surged!")
         return log

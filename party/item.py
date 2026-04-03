@@ -8,6 +8,7 @@ class Item:
     description: str
     value: int = 10
     weight: float = 1.0
+    rarity: str = "Common" # Common, Rare, Legendary
 
 @dataclass
 class Weapon(Item):

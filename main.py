@@ -120,7 +120,7 @@ class GameController:
             event = EventTemplate(event_id, title, desc, [EventChoice(c["text"], c["outcome"]) for c in choices])
         else:
             event = self.event_manager.get_event(event_id)
-        if event:
+        if event and event.check_conditions(self.state):
             self.active_event = event
 
     def resolve_choice(self, choice_idx):
@@ -160,13 +160,16 @@ class GameController:
             if dist == 1:
                 tile = self.state.world.get_tile(tq, tr)
                 if tile and tile.terrain_type != "water":
-                    if self.state.party.move_to(tq, tr, int(tile.movement_cost)):
+                    last_q, last_r = self.state.party.q, self.state.party.r
+                    if self.state.party.move_to(tq, tr, tile.movement_cost):
                         # Reveal surroundings on move
-                        EventTrigger.check_enter_hex(tq, tr)
+                        EventTrigger.check_enter_hex(tq, tr, last_q, last_r)
 
         if event.type == pygame.KEYDOWN:
             if event.key == pygame.K_SPACE:
                 self.state.advance_turn()
+                EventTrigger.check_wait()
+                EventTrigger.check_time()
                 self.logs.append(f"Turn {self.state.turn} begins.")
                 if self.state.ironman:
                     SaveManager.save_game("data/saves/ironman.sav")
@@ -200,6 +203,13 @@ class GameController:
                 if tile and not tile.is_wall:
                     self.state.dungeon_pos = (nx, ny)
                     self.state.compute_fov()
+
+                    if tile.trap_id:
+                        self.logs.append(f"TRAP! You triggered a {tile.trap_id}!")
+                        for m in self.state.party.members:
+                            m.hp -= 10
+                        tile.trap_id = None # One-time trigger
+
                     if (nx, ny) == self.state.active_dungeon.exit_pos:
                         quest = self.state.quest_manager.update_objective(f"dungeon_cleared_{self.state.active_dungeon_id}")
                         if quest:
