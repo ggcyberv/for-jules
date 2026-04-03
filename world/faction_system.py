@@ -1,5 +1,5 @@
 from dataclasses import dataclass, field
-from typing import Dict
+from typing import Dict, List, Tuple, Any
 
 @dataclass
 class Faction:
@@ -51,3 +51,29 @@ class FactionSystem:
     def get_faction_relation(self, faction_a: str, faction_b: str) -> int:
         pair = tuple(sorted((faction_a, faction_b)))
         return self.relations.get(pair, 0)
+
+@dataclass
+class NPCParty:
+    party_id: str
+    faction_id: str
+    name: str
+    q: int
+    r: int
+    members: List[Any] # Characters
+    behavior: str = "patrol" # patrol, chase, idle
+    patrol_origin: Tuple[int, int] = (0, 0)
+
+    def update(self, world, target_pos=None):
+        from world.hex_grid import HexGrid
+        if self.behavior == "chase" and target_pos:
+            # Simple chase logic
+            neighbors = world.get_neighbors(self.q, self.r)
+            best_n = min(neighbors, key=lambda n: HexGrid.distance(n[0], n[1], target_pos[0], target_pos[1]))
+            self.q, self.r = best_n
+        elif self.behavior == "patrol":
+            # Simple random patrol near origin
+            neighbors = world.get_neighbors(self.q, self.r)
+            valid_n = [n for n in neighbors if HexGrid.distance(n[0], n[1], self.patrol_origin[0], self.patrol_origin[1]) < 10]
+            if valid_n:
+                import random
+                self.q, self.r = random.choice(valid_n)

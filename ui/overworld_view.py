@@ -76,6 +76,14 @@ class OverworldView:
 
         state = GameState()
 
+        # Draw NPCs
+        for npc in state.npc_parties:
+            nx, ny = self.hex_to_pixel(npc.q, npc.r)
+            if nx < -50 or nx > self.screen_width - 200 or ny < -50 or ny > self.screen_height + 50:
+                continue
+            color = (255, 0, 0) if state.faction_system.get_reputation(npc.faction_id) <= -50 else (0, 255, 255)
+            pygame.draw.circle(screen, color, (int(nx), int(ny)), self.hex_size // 3)
+
         # Right Side Panel
         panel_rect = pygame.Rect(self.screen_width - 250, 0, 250, self.screen_height)
         UIHelper.draw_frame(screen, panel_rect)
@@ -105,7 +113,7 @@ class OverworldView:
         y += 30
 
         # Turn count
-        turn_text = f"Turn: {state.turn}"
+        turn_text = f"Turn: {state.turn} | {state.current_weather}"
         screen.blit(self.medium_font.render(turn_text, True, COLOR_TEXT_WHITE), (panel_rect.x + 20, y))
         y += 40
 

@@ -5,6 +5,7 @@ from world.faction_system import FactionSystem
 from world.dungeon_generator import DungeonMap
 from engine.quest_manager import QuestManager
 from engine.lore_manager import LoreManager
+from world.faction_system import NPCParty
 from dataclasses import dataclass, field
 from typing import List, Dict, Any, Tuple, Optional
 
@@ -39,6 +40,8 @@ class GameState:
             cls._instance.last_pos: Tuple[int, int] = (0, 0)
             cls._instance.world_facts: List[WorldFact] = []
             cls._instance.timed_events: List[Dict[str, Any]] = []
+            cls._instance.npc_parties: List[NPCParty] = []
+            cls._instance.current_weather: str = "Clear"
         return cls._instance
 
     def initialize(self, world: HexGrid, party: Party, seed: int, locations: Dict[str, Any]):
@@ -57,6 +60,10 @@ class GameState:
 
     def advance_turn(self):
         self.turn += 1
+        # Randomize weather
+        import random
+        if random.random() < 0.2:
+            self.current_weather = random.choice(["Rainy", "Foggy", "Stormy", "Clear"])
         if self.party:
             self.party.rest()
             if (self.party.q, self.party.r) == self.last_pos:
@@ -64,6 +71,11 @@ class GameState:
             else:
                 self.consecutive_wait_turns = 0
                 self.last_pos = (self.party.q, self.party.r)
+
+        # Update NPC Parties
+        for npc in self.npc_parties:
+            target = (self.party.q, self.party.r) if self.party else None
+            npc.update(self.world, target)
 
     def compute_fov(self, radius: int = 5):
         if not self.active_dungeon: return

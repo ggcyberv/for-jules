@@ -75,6 +75,8 @@ class GameController:
         seed = secrets.randbits(32)
         settings = {"danger_level": 0.6}
         self.world_gen = WorldGenerator(seed, settings)
+
+        from world.faction_system import NPCParty
         grid = HexGrid(chunk_size=10)
 
         hero1 = Character("Alaric", attack=15, defense=10, speed=6, accuracy=85, critical_chance=10, backstory="A disgraced knight seeking redemption.")
@@ -83,6 +85,11 @@ class GameController:
 
         state = GameState()
         state.initialize(grid, party, seed, self.world_gen.locations)
+
+        # Spawn some NPC parties
+        state.npc_parties.append(NPCParty("bandit_patrol_1", "bandits", "Bandit Raiders", 5, 5, [CombatSimulator.load_enemy("bandit")], behavior="chase"))
+        state.npc_parties.append(NPCParty("citizen_patrol_1", "citizens", "Town Guards", 0, 0, [CombatSimulator.load_enemy("skeleton")], behavior="patrol", patrol_origin=(0,0)))
+
         return state
 
     def check_chunks(self, q, r):
@@ -180,6 +187,17 @@ class GameController:
         if event.type == pygame.KEYDOWN:
             if event.key == pygame.K_SPACE:
                 self.state.advance_turn()
+
+                # Check NPC Encounters
+                for npc in self.state.npc_parties:
+                    if (npc.q, npc.r) == (self.state.party.q, self.state.party.r):
+                        rel = self.state.faction_system.get_reputation(npc.faction_id)
+                        if rel <= -50:
+                            self.logs.append(f"Ambushed by {npc.name}!")
+                            self.active_combat = {"enemies": npc.members, "turn": 1}
+                            self.state.npc_parties.remove(npc)
+                        else:
+                            self.on_trigger_story_event("npc_meeting", title=f"Meeting: {npc.name}", desc=f"You encounter a group of {npc.name}. They seem {self.state.faction_system.get_status(npc.faction_id).lower()}.", choices=[{"text": "Trade Rumors", "outcome": {"type": "message", "text": "They share some local gossip."}}, {"text": "Leave", "outcome": {"type": "message", "text": "Safe travels."}}])
 
                 # Check Timed Events
                 new_timed = []
@@ -335,12 +353,17 @@ class GameController:
             else:
                 self.logs.append("The quest board is currently empty.")
         elif node.service_type == "blacksmith":
-            self.on_trigger_story_event("blacksmith_service", title="Blacksmith", desc="I can sharpen your blades for 30 gold.", choices=[{"text": "Upgrade Weapons", "outcome": {"type": "message", "text": "Your weapons feel sharper."}}, {"text": "Leave", "outcome": {"type": "message", "text": "Come back when you have coin."}}])
+            self.on_trigger_story_event("blacksmith_service", title="Blacksmith", desc="I can sharpen your blades for 30 gold, or craft something new if you have iron.", choices=[{"text": "Upgrade Weapons (30g)", "outcome": {"type": "message", "text": "Your weapons feel sharper."}}, {"text": "Craft Iron Shield (50g + Iron)", "outcome": {"type": "message", "text": "A sturdy shield is forged."}}, {"text": "Leave", "outcome": {"type": "message", "text": "Come back when you have coin."}}])
         elif node.service_type == "tavern":
             if self.state.party.gold >= 20:
                 self.state.party.gold -= 20
                 for m in self.state.party.members: m.stamina = m.max_stamina
                 self.logs.append("Restored party stamina at the tavern.")
+                # Rumor discovery
+                from engine.lore_manager import LoreFragment
+                frag = LoreFragment("rumor_1", "Whispers of the Deep", "They say the ruins to the south hold more than just gold.")
+                if self.state.lore_manager.discover_fragment(frag):
+                    self.logs.append("You heard an interesting rumor...")
             else: self.logs.append("Not enough gold for a round of drinks.")
         else:
             self.logs.append(f"Visited {node.name}. (Service not implemented)")
