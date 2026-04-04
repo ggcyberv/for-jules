@@ -13,6 +13,7 @@ class DungeonTile:
     explored: bool = False
     visible: bool = False
     trap_id: Optional[str] = None
+    has_loot: bool = False
 
 @dataclass
 class DungeonMap:
@@ -66,6 +67,15 @@ class DungeonGenerator:
 
             if not intersects:
                 self._create_room(dungeon, x, y, w, h, template)
+
+                # Randomly place loot
+                if self.rng.get_float() < 0.3:
+                    lx = self.rng.get_int(x, x + w - 1)
+                    ly = self.rng.get_int(y, y + h - 1)
+                    ltile = dungeon.get_tile(lx, ly)
+                    if ltile and not ltile.is_wall:
+                        ltile.has_loot = True
+
                 # Randomly place traps in the room
                 for _ in range(self.rng.get_int(1, 3)):
                     tx = self.rng.get_int(x, x + w - 1)

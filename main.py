@@ -56,7 +56,6 @@ class GameController:
 
         self.event_manager = EventManager()
         self.event_manager.load_templates("data/events")
-        self.event_manager.load_quests("data/quests", self.state.quest_manager)
         self.clock = pygame.time.Clock()
         self.logs = ["Welcome to the Unbound Realm."]
         self.active_event: Optional[EventTemplate] = None
@@ -82,10 +81,6 @@ class GameController:
         event_bus.subscribe("trigger_story_event", self.on_trigger_story_event)
         event_bus.subscribe("request_generation", self.check_chunks)
 
-        # Ensure starting area is fully loaded and discovered
-        self.check_chunks(0, 0)
-        EventTrigger.check_enter_hex(0, 0)
-
     def setup_game(self):
         seed = secrets.randbits(32)
         settings = {"danger_level": 0.6}
@@ -100,6 +95,7 @@ class GameController:
 
         state = GameState()
         state.initialize(grid, party, seed, self.world_gen.locations)
+        self.event_manager.load_quests("data/quests", state.quest_manager)
 
         # Spawn some NPC parties
         state.npc_parties.append(NPCParty("bandit_patrol_1", "bandits", "Bandit Raiders", 5, 5, [CombatSimulator.load_enemy("bandit")], behavior="chase"))
@@ -262,6 +258,13 @@ class GameController:
                 self.logs.append(f"Tactic: {self.current_tactic.value}")
             elif event.key == pygame.K_i:
                 self.show_party_screen = True
+            elif event.key == pygame.K_r:
+                # Rest at camp
+                if self.state.party.food >= len(self.state.party.members):
+                    self.state.advance_turn()
+                    self.logs.append("You set up camp and rest for the night.")
+                else:
+                    self.logs.append("Not enough food to set up camp.")
 
     def run_dungeon(self, event):
         self.audio.play_ambient("dungeon")
@@ -287,6 +290,12 @@ class GameController:
                         for m in self.state.party.members:
                             m.hp -= 10
                         tile.trap_id = None # One-time trigger
+
+                    if tile.has_loot:
+                        amount = random.randint(50, 150)
+                        self.state.party.gold += amount
+                        self.logs.append(f"You found a treasure chest! Gained {amount} gold.")
+                        tile.has_loot = False
 
                     if (nx, ny) == self.state.active_dungeon.exit_pos:
                         quest = self.state.quest_manager.update_objective(f"dungeon_cleared_{self.state.active_dungeon_id}")
@@ -448,14 +457,21 @@ class GameController:
                     if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
                         action = self.menu_view.handle_click(event.pos)
                         if action == "new_game":
+                            # Loading Screen
+                            self.screen.fill((10, 10, 15))
+                            t_surf = pygame.font.SysFont("Arial", 24).render("Forging the Realm...", True, (255, 215, 0))
+                            self.screen.blit(t_surf, (800 // 2 - t_surf.get_width() // 2, 600 // 2))
+                            pygame.display.flip()
+
                             self.state = self.setup_game()
                             self.game_running = True
                             # Ensure starting area is fully loaded and discovered
-                            self.check_chunks(0, 0)
-                            EventTrigger.check_enter_hex(0, 0)
+                            self.check_chunks(self.state.party.q, self.state.party.r)
+                            EventTrigger.check_enter_hex(self.state.party.q, self.state.party.r)
                         elif action == "load_game":
                             self.state = GameState()
                             if SaveManager.load_game("data/saves/quicksave.sav"):
+                                self.event_manager.load_quests("data/quests", self.state.quest_manager)
                                 self.game_running = True
                         elif action == "quit":
                             pygame.quit(); sys.exit()
