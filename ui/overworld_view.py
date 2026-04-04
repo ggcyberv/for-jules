@@ -122,7 +122,10 @@ class OverworldView:
         # Turn count
         turn_text = f"Turn: {state.turn} | {state.current_weather}"
         screen.blit(self.medium_font.render(turn_text, True, COLOR_TEXT_WHITE), (panel_rect.x + 20, y))
-        y += 40
+        y += 20
+        seed_text = f"Seed: {state.seed}"
+        screen.blit(self.font.render(seed_text, True, (150, 150, 150)), (panel_rect.x + 20, y))
+        y += 20
 
         # Logs in Panel
         log_title = self.medium_font.render("Chronicle:", True, COLOR_TEXT_GOLD)

@@ -3,7 +3,7 @@ import sys
 import secrets
 import os
 import random
-from typing import Optional, List, Tuple
+from typing import Optional, List, Tuple, Any
 from engine.game_state import GameState
 from engine.rng_manager import RNGManager
 from engine.event_bus import event_bus
@@ -86,8 +86,14 @@ class GameController:
         event_bus.subscribe("trigger_story_event", self.on_trigger_story_event)
         event_bus.subscribe("request_generation", self.check_chunks)
 
-    def setup_game(self):
-        seed = secrets.randbits(32)
+    def setup_game(self, seed: Optional[Any] = None):
+        if seed is None:
+            seed = secrets.randbits(32)
+        elif isinstance(seed, str):
+            # Deterministic hash of string to int
+            import hashlib
+            seed = int(hashlib.sha256(seed.encode()).hexdigest(), 16) % (2**32)
+
         settings = {
             "danger_level": 0.6,
             "urbanization": 0.4,
@@ -147,14 +153,19 @@ class GameController:
         tile = self.state.world.get_tile(q, r)
         biome = tile.terrain_type if tile else "plains"
 
+        # Seeded RNG for deterministic encounters per hex
+        encounter_seed = self.state.seed ^ (q * 3919) ^ (r * 7237)
+        rng = RNGManager(encounter_seed)
+        roll = rng.get_float()
+
         if biome == "forest":
-            enemy_id = "wolf" if random.random() < 0.7 else "bandit"
+            enemy_id = "wolf" if roll < 0.7 else "bandit"
         elif biome == "mountain":
             enemy_id = "skeleton"
         elif biome == "water":
             return # No water encounters for now
         else: # plains
-            enemy_id = "orc" if random.random() < 0.5 else "bandit"
+            enemy_id = "orc" if roll < 0.5 else "bandit"
 
         enemy = CombatSimulator.load_enemy(enemy_id)
         self.logs.append(f"Encounter! A {enemy.name} blocks your path.")
@@ -223,7 +234,7 @@ class GameController:
     def run_overworld(self, event):
         # Faction-specific ambience
         tile = self.state.world.get_tile(self.state.party.q, self.state.party.r)
-        faction_id = tile.faction_id if tile else "neutral"
+        faction_id = tile.faction_influence if tile else "neutral"
         if faction_id == "undead":
             self.audio.play_ambient("undead_theme")
         elif faction_id == "bandits":
@@ -535,6 +546,10 @@ class GameController:
                             self.message_view.handle_click(event.pos)
                         continue
 
+                    if event.type == pygame.KEYDOWN:
+                        self.menu_view.handle_keydown(event)
+                        continue
+
                     if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
                         action = self.menu_view.handle_click(event.pos)
                         if action == "new_game":
@@ -544,7 +559,8 @@ class GameController:
                             self.screen.blit(t_surf, (800 // 2 - t_surf.get_width() // 2, 600 // 2))
                             pygame.display.flip()
 
-                            self.state = self.setup_game()
+                            seed_val = self.menu_view.seed_input if self.menu_view.seed_input else None
+                            self.state = self.setup_game(seed_val)
                             self.game_running = True
                             # Ensure starting area is fully loaded and discovered
                             self.check_chunks(self.state.party.q, self.state.party.r)
@@ -577,9 +593,14 @@ class GameController:
                     elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
                         if self.party_view.handle_click(event.pos, self.state.party): self.logs.append("Attribute increased!")
                     continue
-                if self.active_town: self.run_town(event)
-                elif self.state.active_dungeon: self.run_dungeon(event)
-                else: self.run_overworld(event)
+                if self.active_town:
+                    self.run_town(event)
+                    continue
+                elif self.state.active_dungeon:
+                    self.run_dungeon(event)
+                    continue
+                else:
+                    self.run_overworld(event)
 
             if not self.game_running:
                 self.menu_view.render(self.screen)
