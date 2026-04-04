@@ -54,12 +54,13 @@ class WorldGenerator:
                         best_faction = faction_id
                 tile.faction_influence = best_faction
 
-                # Use urbanization and loot_abundance settings
+                # Use world settings
                 urbanization = self.settings.get("urbanization", 0.4)
                 # Boost urbanization near capitals
                 if best_dist < 20: urbanization += 0.2
 
                 loot_abundance = self.settings.get("loot_abundance", 0.5)
+                magic_freq = self.settings.get("magic_frequency", 0.6)
 
                 if (q, r) != (0, 0) and rng.get_float() < (0.01 + loot_abundance * 0.03):
                     poi_id = f"loc_{q}_{r}"
@@ -77,7 +78,7 @@ class WorldGenerator:
                         self.locations[poi_id] = town
                     elif roll < urbanization + 0.3:
                         self.locations[poi_id] = Dungeon(poi_id, f"Ruins {q},{r}", q, r)
-                    elif roll < urbanization + 0.5:
+                    elif roll < urbanization + 0.3 + (magic_freq * 0.3):
                         self.locations[poi_id] = Location(poi_id, f"Ancient Shrine {q},{r}", q, r, "shrine")
                     else:
                         self.locations[poi_id] = Location(poi_id, f"Abandoned Mine {q},{r}", q, r, "resource_node")

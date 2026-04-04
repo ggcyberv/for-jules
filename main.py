@@ -83,7 +83,13 @@ class GameController:
 
     def setup_game(self):
         seed = secrets.randbits(32)
-        settings = {"danger_level": 0.6}
+        settings = {
+            "danger_level": 0.6,
+            "urbanization": 0.4,
+            "loot_abundance": 0.5,
+            "magic_frequency": 0.6,
+            "faction_hostility": 0.3
+        }
         self.world_gen = WorldGenerator(seed, settings)
 
         from world.faction_system import NPCParty
@@ -96,6 +102,11 @@ class GameController:
         state = GameState()
         state.initialize(grid, party, seed, self.world_gen.locations)
         self.event_manager.load_quests("data/quests", state.quest_manager)
+
+        # Set initial faction relations based on hostility
+        hostility = settings.get("faction_hostility", 0.3)
+        for faction_id in ["bandits", "undead"]:
+            state.faction_system.adjust_reputation(faction_id, -int(hostility * 100))
 
         # Spawn some NPC parties
         state.npc_parties.append(NPCParty("bandit_patrol_1", "bandits", "Bandit Raiders", 5, 5, [CombatSimulator.load_enemy("bandit")], behavior="chase"))
@@ -114,6 +125,12 @@ class GameController:
 
     def on_hex_discovered(self, q, r):
         self.logs.append(f"Discovered hex at ({q}, {r})")
+        tile = self.state.world.get_tile(q, r)
+        if tile and tile.poi_id:
+            loc = self.state.locations.get(tile.poi_id)
+            if loc and not self.state.global_flags.get(f"seen_{tile.poi_id}"):
+                self.state.global_flags[f"seen_{tile.poi_id}"] = True
+                self.message_view.show("Discovery!", f"You have found {loc.name}, a {loc.location_type}. Its location is now marked on your map.")
 
     def on_random_encounter(self, q, r):
         tile = self.state.world.get_tile(q, r)
@@ -363,7 +380,8 @@ class GameController:
                     # Success builds bonds
                     for m1 in self.state.party.members:
                         if m1.hp > 0:
-                            m1.gain_xp(xp)
+                            if m1.gain_xp(xp):
+                                self.message_view.show("LEVEL UP!", f"{m1.name} has reached level {m1.level}!")
                             for m2 in self.state.party.members:
                                 if m1 != m2 and m2.hp > 0:
                                     m1.adjust_relationship(m2.name, 2)
@@ -468,6 +486,7 @@ class GameController:
                             # Ensure starting area is fully loaded and discovered
                             self.check_chunks(self.state.party.q, self.state.party.r)
                             EventTrigger.check_enter_hex(self.state.party.q, self.state.party.r)
+                            self.message_view.show("The Journey Begins", "You stand at the edge of Riverfall. The Unbound Realm stretches before you, filled with ancient secrets and growing dangers. Lead your party to glory or ruin.")
                         elif action == "load_game":
                             self.state = GameState()
                             if SaveManager.load_game("data/saves/quicksave.sav"):

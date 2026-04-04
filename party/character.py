@@ -76,10 +76,12 @@ class Character:
         bonus = self.equipment.main_hand.accuracy_bonus if hasattr(self.equipment.main_hand, 'accuracy_bonus') else 0
         return self.accuracy + bonus + self.luck
 
-    def gain_xp(self, amount: int):
+    def gain_xp(self, amount: int) -> bool:
         self.xp += amount
         if self.xp >= self.level * 100:
             self._level_up()
+            return True
+        return False
 
     def adjust_relationship(self, other_name: str, amount: int):
         self.relationships[other_name] = self.relationships.get(other_name, 0) + amount

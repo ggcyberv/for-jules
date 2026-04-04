@@ -3,7 +3,10 @@ import os
 
 class AudioManager:
     def __init__(self):
-        pygame.mixer.init()
+        try:
+            pygame.mixer.init()
+        except Exception as e:
+            print(f"Warning: Audio mixer could not be initialized: {e}")
         self.sounds = {}
         self.current_track = None
 
