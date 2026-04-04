@@ -27,6 +27,9 @@ from combat.tactics import TacticType, FormationType, AIPriority
 from world.location import Town, Dungeon, TownNode
 from engine.save_manager import SaveManager
 from engine.audio_manager import AudioManager
+from ui.menu_view import MenuView
+from ui.message_view import MessageView
+from ui.pre_battle_view import PreBattleView
 
 class GameController:
     def __init__(self):
@@ -36,8 +39,12 @@ class GameController:
 
         self.audio = AudioManager()
         self.world_gen = None
-        self.state = self.setup_game()
+        self.state = None
+        self.game_running = False
 
+        self.menu_view = MenuView(800, 600)
+        self.message_view = MessageView(800, 600)
+        self.pre_battle_view = PreBattleView(800, 600)
         self.overworld_view = OverworldView(800, 600)
         self.event_view = EventView(800, 600)
         self.dungeon_view = DungeonView(800, 600)
@@ -54,8 +61,12 @@ class GameController:
         self.active_town: Optional[Town] = None
         self.show_party_screen = False
 
+        self.transition_alpha = 0
+        self.transition_target = None # "overworld", "combat", "town", etc.
+
         # Combat State
         self.active_combat = None
+        self.pre_battle_active = False
         self.combat_log = []
         self.current_tactic = TacticType.BALANCED
         self.current_formation = FormationType.NONE
@@ -114,6 +125,7 @@ class GameController:
     def on_enter_location(self, poi_id):
         loc = self.state.locations.get(poi_id)
         if isinstance(loc, Town):
+            self.trigger_transition("town")
             self.active_town = loc
             self.logs.append(f"Entered town: {loc.name}.")
         elif isinstance(loc, Dungeon):
@@ -186,7 +198,10 @@ class GameController:
 
         if event.type == pygame.KEYDOWN:
             if event.key == pygame.K_SPACE:
+                old_food = self.state.party.food
                 self.state.advance_turn()
+                if old_food == 0 and self.state.party.food == 0:
+                    self.logs.append("The party is starving! Morale and health are failing.")
 
                 # Check NPC Encounters
                 for npc in self.state.npc_parties:
@@ -371,14 +386,56 @@ class GameController:
                 frag = LoreFragment("rumor_1", "Whispers of the Deep", "They say the ruins to the south hold more than just gold.")
                 if self.state.lore_manager.discover_fragment(frag):
                     self.logs.append("You heard an interesting rumor...")
+                    self.message_view.show("New Rumor", frag.content)
             else: self.logs.append("Not enough gold for a round of drinks.")
         else:
             self.logs.append(f"Visited {node.name}. (Service not implemented)")
+
+    def trigger_transition(self, target):
+        self.transition_alpha = 255
+        self.transition_target = target
 
     def run(self):
         while True:
             for event in pygame.event.get():
                 if event.type == pygame.QUIT: pygame.quit(); sys.exit()
+
+                if self.game_running and self.message_view.active_message:
+                    if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                        self.message_view.handle_click(event.pos)
+                    continue
+
+                if self.game_running and self.pre_battle_active:
+                    if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                        action = self.pre_battle_view.handle_click(event.pos)
+                        if action == "cycle_tactic":
+                            tl = list(TacticType)
+                            self.current_tactic = tl[(tl.index(self.current_tactic) + 1) % len(tl)]
+                        elif action == "cycle_formation":
+                            fl = list(FormationType)
+                            self.current_formation = fl[(fl.index(self.current_formation) + 1) % len(fl)]
+                        elif action == "start":
+                            self.pre_battle_active = False
+                            self.trigger_transition("combat")
+                    continue
+
+                if not self.game_running:
+                    if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                        action = self.menu_view.handle_click(event.pos)
+                        if action == "new_game":
+                            self.state = self.setup_game()
+                            self.game_running = True
+                            # Ensure starting area is fully loaded and discovered
+                            self.check_chunks(0, 0)
+                            EventTrigger.check_enter_hex(0, 0)
+                        elif action == "load_game":
+                            self.state = GameState()
+                            if SaveManager.load_game("data/saves/quicksave.sav"):
+                                self.game_running = True
+                        elif action == "quit":
+                            pygame.quit(); sys.exit()
+                    continue
+
                 if self.active_event:
                     if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
                         idx = self.event_view.handle_click(event.pos)
@@ -395,12 +452,32 @@ class GameController:
                 if self.active_town: self.run_town(event)
                 elif self.state.active_dungeon: self.run_dungeon(event)
                 else: self.run_overworld(event)
-            if self.active_combat: self.combat_view.render(self.screen, self.state.party.members, self.active_combat["enemies"], self.combat_log, self.active_combat["turn"])
+
+            if not self.game_running:
+                self.menu_view.render(self.screen)
+            elif self.active_combat:
+                if self.pre_battle_active:
+                    self.pre_battle_view.render(self.screen, self.active_combat["enemies"], self.current_tactic, self.current_formation)
+                else:
+                    self.combat_view.render(self.screen, self.state.party.members, self.active_combat["enemies"], self.combat_log, self.active_combat["turn"])
             elif self.show_party_screen: self.party_view.render(self.screen, self.state.party)
             elif self.active_town: self.town_view.render(self.screen, self.active_town)
             elif self.state.active_dungeon: self.dungeon_view.render(self.screen, self.state.active_dungeon, self.state.dungeon_pos)
             else: self.overworld_view.render(self.screen, self.state.world, (self.state.party.q, self.state.party.r), self.logs)
-            if self.active_event: self.event_view.render(self.screen, self.active_event)
+
+            if self.game_running and self.active_event:
+                self.event_view.render(self.screen, self.active_event)
+            if self.game_running and self.message_view.active_message:
+                self.message_view.render(self.screen)
+
+            # Transition Overlay
+            if self.transition_alpha > 0:
+                overlay = pygame.Surface((800, 600))
+                overlay.fill((0, 0, 0))
+                overlay.set_alpha(self.transition_alpha)
+                self.screen.blit(overlay, (0, 0))
+                self.transition_alpha = max(0, self.transition_alpha - 25)
+
             pygame.display.flip(); self.clock.tick(30)
 
 if __name__ == "__main__":

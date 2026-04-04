@@ -44,7 +44,17 @@ class Party:
     def rest(self):
         self.current_ap = self.max_ap
         food_consumed = len(self.members) * 2
-        self.food = max(0, self.food - food_consumed)
-        for member in self.members:
-            member.hp = min(member.max_hp, member.hp + 5)
-            member.stamina = min(member.max_stamina, member.stamina + 20)
+
+        if self.food >= food_consumed:
+            self.food -= food_consumed
+            for member in self.members:
+                member.hp = min(member.max_hp, member.hp + 5)
+                member.stamina = min(member.max_stamina, member.stamina + 20)
+                member.morale = min(member.max_morale, member.morale + 2)
+        else:
+            self.food = 0
+            # Starvation penalties
+            for member in self.members:
+                member.hp = max(1, member.hp - 10)
+                member.morale = max(0, member.morale - 10)
+                member.stamina = max(0, member.stamina - 10)
