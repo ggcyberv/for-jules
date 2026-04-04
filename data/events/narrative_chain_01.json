@@ -1,0 +1,19 @@
+{
+  "event_id": "narrative_chain_01",
+  "title": "A Grateful Faction",
+  "description": "Because of your previous assistance, the local scouts have marked a hidden cache of supplies for you.",
+  "conditions": {
+    "fact_occurred": "helped_nomads"
+  },
+  "choices": [
+    {
+      "text": "Claim the supplies",
+      "outcome": {
+        "type": "message",
+        "text": "You find extra food and gold in the hidden stash.",
+        "gold": 50,
+        "food": 20
+      }
+    }
+  ]
+}

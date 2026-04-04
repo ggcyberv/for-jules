@@ -30,6 +30,7 @@ from engine.audio_manager import AudioManager
 from ui.menu_view import MenuView
 from ui.message_view import MessageView
 from ui.pre_battle_view import PreBattleView
+from ui.end_view import EndView
 
 class GameController:
     def __init__(self):
@@ -45,6 +46,7 @@ class GameController:
         self.menu_view = MenuView(800, 600)
         self.message_view = MessageView(800, 600)
         self.pre_battle_view = PreBattleView(800, 600)
+        self.end_view = EndView(800, 600)
         self.overworld_view = OverworldView(800, 600)
         self.event_view = EventView(800, 600)
         self.dungeon_view = DungeonView(800, 600)
@@ -67,6 +69,8 @@ class GameController:
         # Combat State
         self.active_combat = None
         self.pre_battle_active = False
+        self.game_over = False
+        self.victory = False
         self.combat_log = []
         self.current_tactic = TacticType.BALANCED
         self.current_formation = FormationType.NONE
@@ -116,7 +120,18 @@ class GameController:
         self.logs.append(f"Discovered hex at ({q}, {r})")
 
     def on_random_encounter(self, q, r):
-        enemy_id = "orc" if random.random() < 0.5 else "skeleton"
+        tile = self.state.world.get_tile(q, r)
+        biome = tile.terrain_type if tile else "plains"
+
+        if biome == "forest":
+            enemy_id = "wolf" if random.random() < 0.7 else "bandit"
+        elif biome == "mountain":
+            enemy_id = "skeleton"
+        elif biome == "water":
+            return # No water encounters for now
+        else: # plains
+            enemy_id = "orc" if random.random() < 0.5 else "bandit"
+
         enemy = CombatSimulator.load_enemy(enemy_id)
         self.logs.append(f"Encounter! A {enemy.name} blocks your path.")
         self.active_combat = {"enemies": [enemy], "turn": 1}
@@ -348,6 +363,8 @@ class GameController:
                 elif not any(m.hp > 0 for m in self.state.party.members):
                     self.logs.append("Party Wiped Out...")
                     self.active_combat = None
+                    self.game_over = True
+                    self.victory = False
 
     def handle_town_node(self, node: TownNode):
         if node.service_type == "healer":
@@ -399,6 +416,14 @@ class GameController:
         while True:
             for event in pygame.event.get():
                 if event.type == pygame.QUIT: pygame.quit(); sys.exit()
+
+                if self.game_running and self.game_over:
+                    if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                        if self.end_view.handle_click(event.pos):
+                            self.game_running = False
+                            self.game_over = False
+                            self.victory = False
+                    continue
 
                 if self.game_running and self.message_view.active_message:
                     if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
@@ -455,6 +480,8 @@ class GameController:
 
             if not self.game_running:
                 self.menu_view.render(self.screen)
+            elif self.game_over:
+                self.end_view.render(self.screen, self.victory, self.state.turn)
             elif self.active_combat:
                 if self.pre_battle_active:
                     self.pre_battle_view.render(self.screen, self.active_combat["enemies"], self.current_tactic, self.current_formation)

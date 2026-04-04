@@ -124,9 +124,15 @@ class PartyView:
         inv_y = self.rect.y + 380
         inv_title = self.font.render(f"Party Inventory (Gold: {party.gold}, Food: {party.food}):", True, (200, 255, 200))
         screen.blit(inv_title, (self.rect.x + 20, inv_y))
+        self.inv_rects = []
         for i, item in enumerate(party.inventory[:9]):
             ix = self.rect.x + 20 + (i % 3) * 230; iy = inv_y + 30 + (i // 3) * 20
-            surf = self.small_font.render(f"- {str(item.name if hasattr(item, 'name') else item)}", True, (200, 200, 200)); screen.blit(surf, (ix, iy))
+            i_rect = pygame.Rect(ix, iy, 200, 20)
+            is_hovered = i_rect.collidepoint(mx, my)
+            text = f"- {str(item.name if hasattr(item, 'name') else item)}"
+            color = COLOR_TEXT_GOLD if is_hovered else (200, 200, 200)
+            screen.blit(self.small_font.render(text, True, color), (ix, iy))
+            self.inv_rects.append((i_rect, i))
 
         footer = "1-6: Switch | TAB: Tabs | ESC/I: Close"
         f_surf = self.small_font.render(footer, True, (150, 150, 150)); screen.blit(f_surf, (self.rect.x + 20, self.rect.bottom - 30))
@@ -236,6 +242,24 @@ class PartyView:
     def handle_click(self, pos, party: Party) -> bool:
         if self.tab != "party" or not party.members: return False
         char = party.members[self.char_idx]
+
+        # Equipment logic
+        from party.item import Weapon, Armor
+        for i_rect, idx in getattr(self, 'inv_rects', []):
+            if i_rect.collidepoint(pos) and idx < len(party.inventory):
+                item = party.inventory[idx]
+                if isinstance(item, Weapon):
+                    # Swap main hand
+                    old = char.equipment.main_hand
+                    char.equipment.main_hand = item
+                    party.inventory[idx] = old if old else "Scrap Metal"
+                    return True
+                elif isinstance(item, Armor):
+                    old = char.equipment.body
+                    char.equipment.body = item
+                    party.inventory[idx] = old if old else "Old Rags"
+                    return True
+
         for rect, attr in self.attr_rects:
             if rect.collidepoint(pos) and char.attribute_points > 0:
                 if attr == "attack": char.attack += 1

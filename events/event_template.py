@@ -35,6 +35,9 @@ class EventTemplate:
                 faction_id, min_val = cond_val.get("faction"), cond_val.get("value")
                 if state.faction_system.get_reputation(faction_id) < min_val:
                     return False
+            if cond_key == "fact_occurred":
+                if not any(f.fact_id == cond_val for f in state.world_facts):
+                    return False
         return True
 
 class EventManager:
