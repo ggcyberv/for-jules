@@ -9,7 +9,7 @@ class MenuView:
         self.font = pygame.font.SysFont("Arial", 24)
         self.title_font = pygame.font.SysFont("Arial", 48, bold=True)
         self.button_rects: List[pygame.Rect] = []
-        self.options = ["New Game", "Load Game", "Quit"]
+        self.options = ["New Game", "Load Game", "Settings", "Quit"]
 
     def render(self, screen: pygame.Surface):
         screen.fill((10, 10, 15))

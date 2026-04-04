@@ -43,6 +43,11 @@ class Character:
     equipment: Equipment = field(default_factory=Equipment)
     attribute_points: int = 0
     combat_log: List[str] = field(default_factory=list)
+    loot_gold: int = 0
+
+    def set_loot(self, gold: int):
+        self.loot_gold = gold
+        return self
 
     @property
     def fatigue_penalty(self) -> float:

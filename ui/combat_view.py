@@ -71,12 +71,19 @@ class CombatView:
 
         # Draw Log Entries
         ly = log_rect.y + 10
-        for entry in log[-6:]:
+        for i, entry in enumerate(log[-6:]):
+            is_last = (i == len(log[-6:]) - 1)
             color = COLOR_TEXT_WHITE
+            font = self.font
+            if is_last:
+                color = COLOR_TEXT_GOLD
+                font = self.medium_font
+
             if "SEVERE" in entry: color = (255, 100, 100)
             elif "Victory" in entry: color = (100, 255, 100)
             elif "POWER STRIKE" in entry: color = COLOR_TEXT_GOLD
-            lsurf = self.font.render(entry, True, color)
+
+            lsurf = font.render(entry, True, color)
             screen.blit(lsurf, (log_rect.x + 10, ly))
             ly += 20
 

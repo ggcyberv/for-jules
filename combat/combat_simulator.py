@@ -19,7 +19,7 @@ class CombatSimulator:
                     attack=data["attack"],
                     defense=data["defense"],
                     speed=data["speed"]
-                )
+                ).set_loot(data.get("loot_gold", 10))
         return Character("Unknown", hp=20, attack=5, defense=5, speed=3)
 
     @staticmethod

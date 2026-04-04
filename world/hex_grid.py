@@ -11,6 +11,7 @@ class HexTile:
     danger_rating: float = 0.0
     faction_influence: Optional[str] = None
     discovered: bool = False
+    visible: bool = False
 
 class HexGrid:
     def __init__(self, chunk_size: int = 16):

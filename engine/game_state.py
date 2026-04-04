@@ -90,3 +90,26 @@ class GameState:
                     if tile:
                         tile.visible = True
                         tile.explored = True
+
+    def compute_overworld_visibility(self, radius: int = 3):
+        if not self.world or not self.party: return
+
+        # Check if party is at a watchtower for increased radius
+        current_tile = self.world.get_tile(self.party.q, self.party.r)
+        if current_tile and current_tile.poi_id:
+            loc = self.locations.get(current_tile.poi_id)
+            if hasattr(loc, 'vision_radius'):
+                radius = max(radius, loc.vision_radius)
+
+        # Reset visibility for all discovered tiles
+        for tile in self.world.tiles.values():
+            tile.visible = False
+
+        pq, pr = self.party.q, self.party.r
+        for dq in range(-radius, radius + 1):
+            for dr in range(max(-radius, -dq - radius), min(radius, -dq + radius) + 1):
+                nq, nr = pq + dq, pr + dr
+                tile = self.world.get_tile(nq, nr)
+                if tile:
+                    tile.visible = True
+                    tile.discovered = True

@@ -31,6 +31,7 @@ from ui.menu_view import MenuView
 from ui.message_view import MessageView
 from ui.pre_battle_view import PreBattleView
 from ui.end_view import EndView
+from ui.pause_view import PauseView
 
 class GameController:
     def __init__(self):
@@ -47,6 +48,7 @@ class GameController:
         self.message_view = MessageView(800, 600)
         self.pre_battle_view = PreBattleView(800, 600)
         self.end_view = EndView(800, 600)
+        self.pause_view = PauseView(800, 600)
         self.overworld_view = OverworldView(800, 600)
         self.event_view = EventView(800, 600)
         self.dungeon_view = DungeonView(800, 600)
@@ -68,9 +70,12 @@ class GameController:
         # Combat State
         self.active_combat = None
         self.pre_battle_active = False
+        self.paused = False
         self.game_over = False
         self.victory = False
         self.combat_log = []
+        self.combat_queue = []
+        self.combat_timer = 0
         self.current_tactic = TacticType.BALANCED
         self.current_formation = FormationType.NONE
         self.current_priority = AIPriority.NEAREST
@@ -108,9 +113,15 @@ class GameController:
         for faction_id in ["bandits", "undead"]:
             state.faction_system.adjust_reputation(faction_id, -int(hostility * 100))
 
+        # Initial Global Diplomacy
+        state.faction_system.adjust_faction_relation("nomads", "bandits", -30)
+
         # Spawn some NPC parties
         state.npc_parties.append(NPCParty("bandit_patrol_1", "bandits", "Bandit Raiders", 5, 5, [CombatSimulator.load_enemy("bandit")], behavior="chase"))
         state.npc_parties.append(NPCParty("citizen_patrol_1", "citizens", "Town Guards", 0, 0, [CombatSimulator.load_enemy("skeleton")], behavior="patrol", patrol_origin=(0,0)))
+
+        # Test Encounter: A wolf pack blocking the way near Riverfall
+        state.npc_parties.append(NPCParty("test_wolf_pack", "undead", "Dire Wolf Pack", 1, 0, [CombatSimulator.load_enemy("wolf")], behavior="idle"))
 
         return state
 
@@ -172,6 +183,9 @@ class GameController:
             amount = random.randint(10, 30)
             self.state.party.gold += amount
             self.logs.append(f"Scavenged {amount} gold from {loc.name}.")
+        elif loc.location_type == "watchtower":
+            self.logs.append(f"You climbed {loc.name}. Your view of the realm is greatly expanded.")
+            self.state.compute_overworld_visibility()
 
     def on_trigger_story_event(self, event_id, title=None, desc=None, choices=None):
         if choices:
@@ -207,7 +221,16 @@ class GameController:
         self.active_event = None
 
     def run_overworld(self, event):
-        self.audio.play_ambient("overworld")
+        # Faction-specific ambience
+        tile = self.state.world.get_tile(self.state.party.q, self.state.party.r)
+        faction_id = tile.faction_id if tile else "neutral"
+        if faction_id == "undead":
+            self.audio.play_ambient("undead_theme")
+        elif faction_id == "bandits":
+            self.audio.play_ambient("bandit_theme")
+        else:
+            self.audio.play_ambient("overworld")
+
         if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
             mx, my = event.pos
             tq, tr = self.overworld_view.pixel_to_hex(mx, my)
@@ -223,9 +246,12 @@ class GameController:
                     if self.state.party.move_to(tq, tr, tile.movement_cost):
                         # Reveal surroundings on move
                         EventTrigger.check_enter_hex(tq, tr, last_q, last_r)
+                        self.state.compute_overworld_visibility()
 
         if event.type == pygame.KEYDOWN:
-            if event.key == pygame.K_SPACE:
+            if event.key == pygame.K_ESCAPE:
+                self.paused = True
+            elif event.key == pygame.K_SPACE:
                 old_food = self.state.party.food
                 self.state.advance_turn()
                 if old_food == 0 and self.state.party.food == 0:
@@ -333,6 +359,8 @@ class GameController:
 
     def run_combat(self, event):
         self.audio.play_ambient("combat")
+        if self.combat_queue: return # Wait for animation to finish
+
         if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
             action = self.combat_view.handle_click(event.pos, self.state.party.members)
             if action:
@@ -342,50 +370,62 @@ class GameController:
                         self.active_combat = None
                     else:
                         self.logs.append("Retreat failed! You are cornered!")
-                        # Skip player turn and simulate enemy round? Or just log.
                         res = CombatSimulator.simulate_round([], self.active_combat["enemies"], self.active_combat["turn"], self.current_tactic, self.current_formation, self.current_priority)
-                        self.combat_log.extend(res["log"])
+                        self.combat_queue.extend(res["log"])
                         self.active_combat["turn"] += 1
                 else:
                     int_log = CombatSimulator.resolve_intervention(action, self.state.party.members, self.active_combat["enemies"])
-                    self.combat_log.extend(int_log)
+                    self.combat_queue.extend(int_log)
         elif event.type == pygame.KEYDOWN:
             if event.key == pygame.K_SPACE:
                 res = CombatSimulator.simulate_round(self.state.party.members, self.active_combat["enemies"], self.active_combat["turn"], self.current_tactic, self.current_formation, self.current_priority)
-                self.combat_log.extend(res["log"])
-
-                # Add visual effects for hits
-                for line in res["log"]:
-                    if "attacks" in line:
-                        target_name = line.split("attacks ")[1].split(" for")[0]
-                        fx_pos = (700, 100) # Default enemy area
-                        if "Enemy" in line: fx_pos = (100, 100) # Party area
-
-                        # Find actual position
-                        if "Enemy" in line:
-                            for idx, m in enumerate(self.state.party.members):
-                                if m.name in target_name: fx_pos = (100, 100 + idx * 80); break
-                        else:
-                            for idx, e in enumerate(self.active_combat["enemies"]):
-                                if e.name in target_name: fx_pos = (700, 100 + idx * 80); break
-
-                        fx_type = "slash" if "attacks" in line else "spark"
-                        self.combat_view.effects.append((fx_type, fx_pos, 5))
-
+                self.combat_queue.extend(res["log"])
                 self.active_combat["turn"] += 1
 
-                # Check outcome
+    def update_combat_animation(self):
+        if not self.combat_queue: return
+
+        self.combat_timer += 1
+        if self.combat_timer >= 15: # Roughly 0.5s at 30 FPS
+            self.combat_timer = 0
+            line = self.combat_queue.pop(0)
+            self.combat_log.append(line)
+
+            # Trigger FX
+            if "attacks" in line:
+                target_name = line.split("attacks ")[1].split(" for")[0]
+                fx_pos = (700, 100) # Default enemy area
+                if "Enemy" in line: fx_pos = (100, 100) # Party area
+
+                # Find actual position
+                if "Enemy" in line:
+                    for idx, m in enumerate(self.state.party.members):
+                        if m.name in target_name: fx_pos = (100, 100 + idx * 100); break
+                else:
+                    for idx, e in enumerate(self.active_combat["enemies"]):
+                        if e.name in target_name: fx_pos = (700, 100 + idx * 100); break
+
+                fx_type = "slash" if "attacks" in line else "spark"
+                self.combat_view.effects.append((fx_type, fx_pos, 5))
+
+            # If queue empty, check outcome
+            if not self.combat_queue:
                 if not any(e.hp > 0 for e in self.active_combat["enemies"]):
                     xp = len(self.active_combat["enemies"]) * 20
-                    # Success builds bonds
+                    gold = sum(e.loot_gold for e in self.active_combat["enemies"])
+                    self.state.party.gold += gold
+
+                    summary_lines = [f"XP Gained: {xp}", f"Gold Found: {gold}", "Bonds strengthened between members."]
                     for m1 in self.state.party.members:
                         if m1.hp > 0:
                             if m1.gain_xp(xp):
-                                self.message_view.show("LEVEL UP!", f"{m1.name} has reached level {m1.level}!")
+                                summary_lines.append(f"{m1.name} LEVELED UP to {m1.level}!")
                             for m2 in self.state.party.members:
                                 if m1 != m2 and m2.hp > 0:
                                     m1.adjust_relationship(m2.name, 2)
-                    self.logs.append(f"Combat Victory! Gained {xp} XP.")
+
+                    self.message_view.show("Combat Victory!", "\n".join(summary_lines))
+                    self.logs.append(f"Combat Victory! Gained {xp} XP and {gold} Gold.")
                     self.active_combat = None
                 elif not any(m.hp > 0 for m in self.state.party.members):
                     self.logs.append("Party Wiped Out...")
@@ -444,6 +484,24 @@ class GameController:
             for event in pygame.event.get():
                 if event.type == pygame.QUIT: pygame.quit(); sys.exit()
 
+                if self.game_running and self.paused:
+                    if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
+                        self.paused = False
+                    if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                        action = self.pause_view.handle_click(event.pos)
+                        if action == "resume": self.paused = False
+                        elif action == "save_game":
+                            SaveManager.save_game("data/saves/quicksave.sav")
+                            self.logs.append("Game saved.")
+                        elif action == "load_game":
+                            if SaveManager.load_game("data/saves/quicksave.sav"):
+                                self.event_manager.load_quests("data/quests", self.state.quest_manager)
+                                self.paused = False
+                        elif action == "main_menu":
+                            self.game_running = False
+                            self.paused = False
+                    continue
+
                 if self.game_running and self.game_over:
                     if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
                         if self.end_view.handle_click(event.pos):
@@ -472,6 +530,11 @@ class GameController:
                     continue
 
                 if not self.game_running:
+                    if self.message_view.active_message:
+                        if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                            self.message_view.handle_click(event.pos)
+                        continue
+
                     if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
                         action = self.menu_view.handle_click(event.pos)
                         if action == "new_game":
@@ -486,12 +549,15 @@ class GameController:
                             # Ensure starting area is fully loaded and discovered
                             self.check_chunks(self.state.party.q, self.state.party.r)
                             EventTrigger.check_enter_hex(self.state.party.q, self.state.party.r)
+                            self.state.compute_overworld_visibility()
                             self.message_view.show("The Journey Begins", "You stand at the edge of Riverfall. The Unbound Realm stretches before you, filled with ancient secrets and growing dangers. Lead your party to glory or ruin.")
                         elif action == "load_game":
                             self.state = GameState()
                             if SaveManager.load_game("data/saves/quicksave.sav"):
                                 self.event_manager.load_quests("data/quests", self.state.quest_manager)
                                 self.game_running = True
+                        elif action == "settings":
+                            self.message_view.show("Settings", "Difficulty: Balanced\nAudio: Enabled\n(More settings coming soon!)")
                         elif action == "quit":
                             pygame.quit(); sys.exit()
                     continue
@@ -501,7 +567,9 @@ class GameController:
                         idx = self.event_view.handle_click(event.pos)
                         if idx is not None: self.resolve_choice(idx)
                     continue
-                if self.active_combat: self.run_combat(event); continue
+                if self.active_combat:
+                    self.run_combat(event)
+                    continue
                 if self.show_party_screen:
                     if event.type == pygame.KEYDOWN:
                         if event.key in [pygame.K_i, pygame.K_ESCAPE]: self.show_party_screen = False
@@ -515,12 +583,15 @@ class GameController:
 
             if not self.game_running:
                 self.menu_view.render(self.screen)
+                if self.message_view.active_message:
+                    self.message_view.render(self.screen)
             elif self.game_over:
                 self.end_view.render(self.screen, self.victory, self.state.turn)
             elif self.active_combat:
                 if self.pre_battle_active:
                     self.pre_battle_view.render(self.screen, self.active_combat["enemies"], self.current_tactic, self.current_formation)
                 else:
+                    self.update_combat_animation()
                     self.combat_view.render(self.screen, self.state.party.members, self.active_combat["enemies"], self.combat_log, self.active_combat["turn"])
             elif self.show_party_screen: self.party_view.render(self.screen, self.state.party)
             elif self.active_town: self.town_view.render(self.screen, self.active_town)
@@ -531,6 +602,8 @@ class GameController:
                 self.event_view.render(self.screen, self.active_event)
             if self.game_running and self.message_view.active_message:
                 self.message_view.render(self.screen)
+            if self.game_running and self.paused:
+                self.pause_view.render(self.screen)
 
             # Transition Overlay
             if self.transition_alpha > 0:

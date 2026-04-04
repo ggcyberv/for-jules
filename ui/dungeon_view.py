@@ -1,6 +1,8 @@
 import pygame
 from typing import Tuple, Dict
 from world.dungeon_generator import DungeonMap, DungeonTile
+from ui.ui_helper import UIHelper, COLOR_TEXT_GOLD, COLOR_TEXT_WHITE, COLOR_FRAME_GOLD
+from typing import List
 
 class DungeonView:
     def __init__(self, screen_width: int, screen_height: int, tile_size: int = 20):
@@ -8,8 +10,12 @@ class DungeonView:
         self.height = screen_height
         self.tile_size = tile_size
         self.font = pygame.font.SysFont("Arial", 12)
+        self.medium_font = pygame.font.SysFont("Arial", 14)
+        self.hover_timer = 0
+        self.last_hover_tile = None
 
     def render(self, screen: pygame.Surface, dungeon: DungeonMap, party_pos: Tuple[int, int]):
+        dt = 1/30
         screen.fill((0, 0, 0))
 
         # Center view on party
@@ -47,6 +53,49 @@ class DungeonView:
                                                 int(offset_y + py * self.tile_size + self.tile_size/2)), self.tile_size/2)
 
         # Instructions
+        footer_rect = pygame.Rect(0, self.height - 40, self.width, 40)
+        UIHelper.draw_frame(screen, footer_rect, border_width=1)
         text = "Use Arrow Keys to move in dungeon. Escape to Exit."
         surf = self.font.render(text, True, (255, 255, 255))
-        screen.blit(surf, (10, self.height - 30))
+        screen.blit(surf, (self.width // 2 - surf.get_width() // 2, self.height - 30))
+
+        # Tooltips
+        mx, my = pygame.mouse.get_pos()
+        # Convert mouse to dungeon coords
+        tx = (mx - offset_x) // self.tile_size
+        ty = (my - offset_y) // self.tile_size
+
+        if (tx, ty) == self.last_hover_tile:
+            self.hover_timer += dt
+        else:
+            self.hover_timer = 0
+            self.last_hover_tile = (tx, ty)
+
+        tile = dungeon.get_tile(tx, ty)
+        if tile and tile.visible and self.hover_timer >= 0.5:
+            lines = ["Wall" if tile.is_wall else "Floor"]
+            if hasattr(tile, 'trap_id') and tile.trap_id:
+                # Only show if party has high perception? For now always if visible.
+                lines.append(f"TRAP: {tile.trap_id}")
+            if hasattr(tile, 'has_loot') and tile.has_loot:
+                lines.append("LOOT: Treasure Chest")
+            if (tx, ty) == dungeon.exit_pos:
+                lines.append("EXIT: Stairs Up")
+
+            self._render_tooltip(screen, mx, my, lines)
+
+    def _render_tooltip(self, screen, x, y, lines: List[str]):
+        padding = 8
+        line_surfs = [self.medium_font.render(l, True, COLOR_TEXT_WHITE) for l in lines]
+        width = max(s.get_width() for s in line_surfs) if line_surfs else 0
+        height = sum(s.get_height() + 3 for s in line_surfs)
+
+        rect = pygame.Rect(x + 10, y + 10, width + padding * 2, height + padding * 2)
+        if rect.right > self.width: rect.right = x - 10
+        if rect.bottom > self.height: rect.bottom = y - 10
+
+        UIHelper.draw_frame(screen, rect, border_color=COLOR_FRAME_GOLD, bg_color=(20, 20, 25), border_width=1)
+        curr_y = rect.y + padding
+        for surf in line_surfs:
+            screen.blit(surf, (rect.x + padding, curr_y))
+            curr_y += surf.get_height() + 3

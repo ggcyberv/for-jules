@@ -34,3 +34,8 @@ class Dungeon(Location):
     danger_level: float = 0.5
     is_cleared: bool = False
     loot_table: str = "default_dungeon"
+
+@dataclass
+class Watchtower(Location):
+    location_type: str = "watchtower"
+    vision_radius: int = 3

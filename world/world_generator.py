@@ -1,7 +1,7 @@
 from typing import Dict, Any, List, Tuple
 from world.hex_grid import HexGrid, HexTile
 from engine.rng_manager import RNGManager
-from world.location import Town, Dungeon, TownNode, Location
+from world.location import Town, Dungeon, TownNode, Location, Watchtower
 from party.character import Character, Skill
 from party.item import Weapon, Armor
 
@@ -80,6 +80,8 @@ class WorldGenerator:
                         self.locations[poi_id] = Dungeon(poi_id, f"Ruins {q},{r}", q, r)
                     elif roll < urbanization + 0.3 + (magic_freq * 0.3):
                         self.locations[poi_id] = Location(poi_id, f"Ancient Shrine {q},{r}", q, r, "shrine")
+                    elif roll < urbanization + 0.3 + (magic_freq * 0.3) + 0.1:
+                        self.locations[poi_id] = Watchtower(poi_id, f"Watchtower {q},{r}", q, r)
                     else:
                         self.locations[poi_id] = Location(poi_id, f"Abandoned Mine {q},{r}", q, r, "resource_node")
 

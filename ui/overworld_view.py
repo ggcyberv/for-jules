@@ -14,6 +14,8 @@ class OverworldView:
         self.medium_font = pygame.font.SysFont("Arial", 14)
         self.large_font = pygame.font.SysFont("Arial", 18)
         self.camera_offset = [0, 0]
+        self.hover_timer = 0
+        self.last_hover_hex = None
 
     def hex_to_pixel(self, q: int, r: int) -> Tuple[float, float]:
         x = self.hex_size * (3/2 * q)
@@ -40,6 +42,7 @@ class OverworldView:
         self.camera_offset[1] = self.screen_height // 2 - ty
 
     def render(self, screen: pygame.Surface, grid: HexGrid, party_pos: Tuple[int, int], logs: List[str]):
+        dt = 1/30 # Assuming 30 FPS
         self.update_camera(party_pos)
         screen.fill((20, 20, 25)) # Darker BG
 
@@ -53,6 +56,10 @@ class OverworldView:
             if tile.terrain_type == "mountain": color = (80, 80, 80)
             elif tile.terrain_type == "forest": color = (30, 90, 30)
             elif tile.terrain_type == "water": color = (30, 30, 150)
+
+            if not tile.visible and tile.discovered:
+                # Dim color if not visible
+                color = tuple(int(c * 0.5) for c in color)
 
             points = []
             for i in range(6):
@@ -133,14 +140,37 @@ class OverworldView:
         # Minimap
         self._render_minimap(screen, grid, party_pos)
 
-        # Improved Tooltip handling
+        # Improved Delayed Detailed Tooltip handling
         mx, my = pygame.mouse.get_pos()
         tq, tr = self.pixel_to_hex(mx, my)
+
+        if (tq, tr) == self.last_hover_hex:
+            self.hover_timer += dt
+        else:
+            self.hover_timer = 0
+            self.last_hover_hex = (tq, tr)
+
         tile = grid.get_tile(tq, tr)
-        if tile and tile.poi_id and tile.discovered:
-            loc = state.locations.get(tile.poi_id)
-            if loc:
-                self._render_tooltip(screen, mx, my, f"{loc.name} ({loc.location_type})")
+        if tile and self.hover_timer >= 0.5: # 0.5s delay
+            lines = [f"Terrain: {tile.terrain_type.capitalize()}"]
+            if tile.faction_influence: lines.append(f"Faction: {tile.faction_influence.capitalize()}")
+
+            if tile.poi_id and tile.discovered:
+                loc = state.locations.get(tile.poi_id)
+                if loc:
+                    lines.append(f"POI: {loc.name}")
+                    lines.append(f"Type: {loc.location_type.capitalize()}")
+
+            # Quests related
+            for q in state.quest_manager.quests.values():
+                if q.is_active and not q.is_finished:
+                    for obj in q.objectives:
+                        if tile.poi_id and obj.target_id in tile.poi_id:
+                            lines.append(f"QUEST: {q.title}")
+
+            if tile.danger_rating > 0.6: lines.append("Status: DANGEROUS AREA")
+
+            self._render_tooltip(screen, mx, my, lines)
 
     def _render_minimap(self, screen, grid, party_pos):
         mini_size = 120
@@ -168,13 +198,18 @@ class OverworldView:
         # Party dot
         pygame.draw.circle(screen, (255, 255, 255), mini_rect.center, 3)
 
-    def _render_tooltip(self, screen, x, y, text):
-        surf = self.medium_font.render(text, True, COLOR_TEXT_WHITE)
-        padding = 8
-        rect = pygame.Rect(x + 10, y + 10, surf.get_width() + padding * 2, surf.get_height() + padding * 2)
-        # Keep tooltip on screen
-        if rect.right > self.screen_width: rect.right = x - 10
-        if rect.bottom > self.screen_height: rect.bottom = y - 10
+    def _render_tooltip(self, screen, x, y, lines: List[str]):
+        padding = 10
+        line_surfs = [self.medium_font.render(l, True, COLOR_TEXT_WHITE) for l in lines]
+        width = max(s.get_width() for s in line_surfs) if line_surfs else 0
+        height = sum(s.get_height() + 5 for s in line_surfs)
 
-        UIHelper.draw_frame(screen, rect, border_color=(150, 150, 150), bg_color=(20, 20, 20), border_width=1)
-        screen.blit(surf, (rect.x + padding, rect.y + padding))
+        rect = pygame.Rect(x + 15, y + 15, width + padding * 2, height + padding * 2)
+        if rect.right > self.screen_width: rect.right = x - 15
+        if rect.bottom > self.screen_height: rect.bottom = y - 15
+
+        UIHelper.draw_frame(screen, rect, border_color=COLOR_FRAME_GOLD, bg_color=(25, 25, 30), border_width=1)
+        curr_y = rect.y + padding
+        for surf in line_surfs:
+            screen.blit(surf, (rect.x + padding, curr_y))
+            curr_y += surf.get_height() + 5

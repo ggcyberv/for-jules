@@ -16,6 +16,7 @@ class ConsequenceEngine:
         if "faction_relation" in outcome:
             rel_data = outcome["faction_relation"]
             state.faction_system.adjust_faction_relation(rel_data["faction_a"], rel_data["faction_b"], rel_data["amount"])
+            from world.faction_system import NPCParty # ensure available
 
         if "gold" in outcome:
             state.party.gold += outcome["gold"]
