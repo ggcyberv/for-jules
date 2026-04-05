@@ -83,9 +83,9 @@ class GameController:
         self.combat_log = []
         self.combat_queue = []
         self.combat_timer = 0
-        self.current_tactic = TacticType.BALANCED
+        self.combat_paused = False
+        self.combat_speed = 1.0 # 1.0 = normal, 2.0 = fast
         self.current_formation = FormationType.NONE
-        self.current_priority = AIPriority.NEAREST
 
         event_bus.subscribe("hex_discovered", self.on_hex_discovered)
         event_bus.subscribe("random_encounter", self.on_random_encounter)
@@ -170,6 +170,7 @@ class GameController:
         enemy = CombatSimulator.load_enemy(enemy_id)
         self.logs.append(f"Encounter! A {enemy.name} blocks your path.")
         self.active_combat = {"enemies": [enemy], "turn": 1}
+        self.pre_battle_active = True
         self.combat_log = [f"Battle against {enemy.name} initiated!"]
 
     def on_enter_location(self, poi_id):
@@ -359,6 +360,7 @@ class GameController:
                         enemy = CombatSimulator.load_enemy(enemy_id)
                         self.logs.append(f"Dungeon Encounter! A {enemy.name} jumps from the shadows!")
                         self.active_combat = {"enemies": [enemy], "turn": 1}
+                        self.pre_battle_active = True
                         self.combat_log = [f"Battle against {enemy.name} initiated!"]
                         tile.enemies = [] # Clear encounter
 
@@ -381,7 +383,6 @@ class GameController:
 
     def run_combat(self, event):
         self.audio.play_ambient("combat")
-        if self.combat_queue: return # Wait for animation to finish
 
         if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
             action = self.combat_view.handle_click(event.pos, self.state.party.members)
@@ -392,22 +393,31 @@ class GameController:
                         self.active_combat = None
                     else:
                         self.logs.append("Retreat failed! You are cornered!")
-                        res = CombatSimulator.simulate_round([], self.active_combat["enemies"], self.active_combat["turn"], self.current_tactic, self.current_formation, self.current_priority)
+                        res = CombatSimulator.simulate_round([], self.active_combat["enemies"], self.active_combat["turn"], self.current_formation)
                         self.combat_queue.extend(res["log"])
                         self.active_combat["turn"] += 1
+                elif action == "pause":
+                    self.combat_paused = not self.combat_paused
+                elif action == "speed":
+                    self.combat_speed = 2.0 if self.combat_speed == 1.0 else 1.0
+                elif action == "tactics":
+                    self.pre_battle_active = True
                 else:
                     int_log = CombatSimulator.resolve_intervention(action, self.state.party.members, self.active_combat["enemies"])
                     self.combat_queue.extend(int_log)
-        elif event.type == pygame.KEYDOWN:
-            if event.key == pygame.K_SPACE:
-                res = CombatSimulator.simulate_round(self.state.party.members, self.active_combat["enemies"], self.active_combat["turn"], self.current_tactic, self.current_formation, self.current_priority)
-                self.combat_queue.extend(res["log"])
-                self.active_combat["turn"] += 1
 
     def update_combat_animation(self):
+        if self.combat_paused: return
+
+        # Auto-enqueue next round if queue empty
+        if not self.combat_queue and self.active_combat:
+            res = CombatSimulator.simulate_round(self.state.party.members, self.active_combat["enemies"], self.active_combat["turn"], self.current_formation)
+            self.combat_queue.extend(res["log"])
+            self.active_combat["turn"] += 1
+
         if not self.combat_queue: return
 
-        self.combat_timer += 1
+        self.combat_timer += 1 * self.combat_speed
         if self.combat_timer >= 15: # Roughly 0.5s at 30 FPS
             self.combat_timer = 0
             line = self.combat_queue.pop(0)
@@ -542,15 +552,27 @@ class GameController:
                 if self.game_running and self.pre_battle_active:
                     if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
                         action = self.pre_battle_view.handle_click(event.pos)
-                        if action == "cycle_tactic":
-                            tl = list(TacticType)
-                            self.current_tactic = tl[(tl.index(self.current_tactic) + 1) % len(tl)]
-                        elif action == "cycle_formation":
+                        if not action: continue
+
+                        if action == "cycle_formation":
                             fl = list(FormationType)
                             self.current_formation = fl[(fl.index(self.current_formation) + 1) % len(fl)]
                         elif action == "start":
                             self.pre_battle_active = False
                             self.trigger_transition("combat")
+                        elif "hero_" in action:
+                            parts = action.split("_")
+                            idx = int(parts[1])
+                            field = parts[2]
+                            hero = self.state.party.members[idx]
+                            if field == "tactic":
+                                opts = [t.value for t in TacticType]
+                                hero.combat_tactic = opts[(opts.index(hero.combat_tactic) + 1) % len(opts)]
+                            elif field == "priority":
+                                opts = [p.value for p in AIPriority]
+                                hero.combat_priority = opts[(opts.index(hero.combat_priority) + 1) % len(opts)]
+                            elif field == "heal":
+                                hero.heal_threshold = (hero.heal_threshold + 10) % 100
                     continue
 
                 if not self.game_running:
@@ -624,11 +646,11 @@ class GameController:
                 self.end_view.render(self.screen, self.victory, self.state.turn)
             elif self.active_combat:
                 if self.pre_battle_active:
-                    self.pre_battle_view.render(self.screen, self.active_combat["enemies"], self.current_tactic, self.current_formation)
+                    self.pre_battle_view.render(self.screen, self.state.party.members, self.active_combat["enemies"], self.current_formation)
                 else:
                     self.update_combat_animation()
                     if self.active_combat:
-                        self.combat_view.render(self.screen, self.state.party.members, self.active_combat["enemies"], self.combat_log, self.active_combat["turn"])
+                        self.combat_view.render(self.screen, self.state.party.members, self.active_combat["enemies"], self.combat_log, self.active_combat["turn"], self.combat_paused, self.combat_speed)
             elif self.show_party_screen: self.party_view.render(self.screen, self.state.party)
             elif self.active_town: self.town_view.render(self.screen, self.active_town)
             elif self.state.active_dungeon: self.dungeon_view.render(self.screen, self.state.active_dungeon, self.state.dungeon_pos)

@@ -24,7 +24,7 @@ class CombatView:
                 sprites[name] = pygame.image.load(os.path.join(path, f)).convert_alpha()
         return sprites
 
-    def render(self, screen: pygame.Surface, party: List[Character], enemies: List[Character], log: List[str], turn: int, summary: Optional[str] = None):
+    def render(self, screen: pygame.Surface, party: List[Character], enemies: List[Character], log: List[str], turn: int, paused: bool = False, speed: float = 1.0, summary: Optional[str] = None):
         screen.fill((15, 15, 20))
 
         # Central Battle Log Frame
@@ -94,7 +94,7 @@ class CombatView:
         # Interventions
         self.button_rects = []
         btn_y = 510
-        actions = ["heal", "strike", "taunt", "focus", "retreat"]
+        actions = ["pause", "speed", "tactics", "heal", "strike", "taunt", "focus", "retreat"]
 
         # Add hero skills as actions
         for hero in party:
@@ -107,7 +107,12 @@ class CombatView:
         for action in actions:
             rect = pygame.Rect(self.width // 2 - 100, btn_y, 200, 25)
             is_hovered = rect.collidepoint(mx, my)
-            UIHelper.draw_button(screen, rect, f"Intervene: {action.capitalize()}", self.font, is_hovered)
+
+            label = f"Intervene: {action.capitalize()}"
+            if action == "pause": label = "RESUME" if paused else "PAUSE"
+            elif action == "speed": label = "Speed: 2x" if speed > 1.0 else "Speed: 1x"
+
+            UIHelper.draw_button(screen, rect, label, self.font, is_hovered)
             self.button_rects.append(rect)
             btn_y += 30
 
@@ -116,12 +121,12 @@ class CombatView:
         t_surf = self.large_font.render(title_text, True, COLOR_TEXT_GOLD)
         screen.blit(t_surf, (self.width // 2 - t_surf.get_width() // 2, 20))
 
-        text = "SPACE: Next Round | ESC: Finalize"
+        text = "Automatic Combat Active | Intervene to influence outcome"
         surf = self.font.render(text, True, (200, 200, 200))
         screen.blit(surf, (self.width // 2 - surf.get_width() // 2, self.height - 30))
 
     def handle_click(self, pos, party: List[Character]) -> Optional[str]:
-        actions = ["heal", "strike", "taunt", "focus", "retreat"]
+        actions = ["pause", "speed", "tactics", "heal", "strike", "taunt", "focus", "retreat"]
         for hero in party:
             if hero.hp > 0:
                 for skill in hero.skills:

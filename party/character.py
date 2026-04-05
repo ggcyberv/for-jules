@@ -38,6 +38,12 @@ class Character:
     max_stamina: int = 100
 
     skills: List[Skill] = field(default_factory=list)
+
+    # Tactical Preferences
+    combat_tactic: str = "Balanced" # TacticType.BALANCED.value
+    combat_priority: str = "Nearest" # AIPriority.NEAREST.value
+    heal_threshold: int = 30 # Percentage
+
     relationships: Dict[str, int] = field(default_factory=dict)
     afflictions: List[Affliction] = field(default_factory=list)
     equipment: Equipment = field(default_factory=Equipment)

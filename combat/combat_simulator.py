@@ -54,20 +54,20 @@ class CombatSimulator:
     def simulate_round(party_members: List[Character],
                        enemies: List[Character],
                        round_num: int,
-                       tactic: TacticType = TacticType.BALANCED,
-                       formation: FormationType = FormationType.NONE,
-                       priority: AIPriority = AIPriority.NEAREST) -> Dict[str, Any]:
+                       formation: FormationType = FormationType.NONE) -> Dict[str, Any]:
         log = [f"Round {round_num}"]
-        t_effect = TACTIC_EFFECTS[tactic]
         f_effect = FORMATION_EFFECTS[formation]
-
-        final_atk_mod = t_effect.attack_mod * f_effect.attack_mod
-        final_def_mod = t_effect.defense_mod * f_effect.defense_mod
-        final_spd_mod = t_effect.speed_mod * f_effect.speed_mod
 
         all_units = [(m, "party") for m in party_members if m.hp > 0] + \
                     [(e, "enemy") for e in enemies if e.hp > 0]
-        all_units.sort(key=lambda x: x[0].speed * (final_spd_mod if x[1] == "party" else 1.0), reverse=True)
+
+        # Determine speed mods per unit
+        def get_speed(u, s):
+            if s == "enemy": return u.speed
+            t_effect = TACTIC_EFFECTS[TacticType(u.combat_tactic)]
+            return u.effective_speed * t_effect.speed_mod * f_effect.speed_mod
+
+        all_units.sort(key=lambda x: get_speed(x[0], x[1]), reverse=True)
 
         for unit, side in all_units:
             if unit.hp <= 0: continue
@@ -85,11 +85,26 @@ class CombatSimulator:
                 continue
 
             if side == "party":
+                # Check for healing intervention based on individual threshold
+                if unit.hp < (unit.max_hp * unit.heal_threshold / 100):
+                    # Check if hero has a heal skill (mocked for now, or just self-heal)
+                    heal_amt = 15
+                    unit.hp = min(unit.max_hp, unit.hp + heal_amt)
+                    log.append(f"{unit.name} prioritizes healing! Restored {heal_amt} HP.")
+                    continue
+
                 targets = [e for e in enemies if e.hp > 0]
                 if not targets: break
 
-                if priority == AIPriority.WOUNDED:
+                # Priority logic
+                if unit.combat_priority == AIPriority.WOUNDED.value:
                     target = min(targets, key=lambda x: x.hp)
+                elif unit.combat_priority == AIPriority.HEALERS.value:
+                    healers = [e for e in targets if "healer" in e.name.lower() or "shaman" in e.name.lower()]
+                    target = random.choice(healers) if healers else random.choice(targets)
+                elif unit.combat_priority == AIPriority.CASTER.value:
+                    casters = [e for e in targets if "mage" in e.name.lower() or "warlock" in e.name.lower()]
+                    target = random.choice(casters) if casters else random.choice(targets)
                 else:
                     target = random.choice(targets)
 
@@ -110,7 +125,8 @@ class CombatSimulator:
                     log.append(f"{attacker_name} misses {defender_name}!")
                     continue
 
-                atk = unit.effective_attack * final_atk_mod
+                t_effect = TACTIC_EFFECTS[TacticType(unit.combat_tactic)]
+                atk = unit.effective_attack * t_effect.attack_mod * f_effect.attack_mod
 
                 # Crit check
                 if random.randint(1, 100) <= unit.critical_chance:
@@ -125,7 +141,10 @@ class CombatSimulator:
                 attacker_name, defender_name = "Enemy " + unit.name, target.name
                 atk = unit.attack
                 dmg_mult = 1.0
-                dfn = target.effective_defense * final_def_mod
+
+                # Find target's formation/tactic defense mods
+                t_target_effect = TACTIC_EFFECTS[TacticType(target.combat_tactic)]
+                dfn = target.effective_defense * t_target_effect.defense_mod * f_effect.defense_mod
 
             damage = max(1, int((atk - (dfn // 2)) * dmg_mult))
             target.hp = max(0, target.hp - damage)
