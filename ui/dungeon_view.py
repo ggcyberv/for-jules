@@ -47,6 +47,11 @@ class DungeonView:
                 # Draw Chest
                 pygame.draw.rect(screen, (255, 215, 0), (offset_x + x * self.tile_size + 4, offset_y + y * self.tile_size + 4, self.tile_size - 8, self.tile_size - 8))
 
+            if hasattr(tile, 'enemies') and tile.enemies and tile.visible:
+                # Draw Enemy placeholder (red circle)
+                pygame.draw.circle(screen, (255, 0, 0), (int(offset_x + x * self.tile_size + self.tile_size/2),
+                                                       int(offset_y + y * self.tile_size + self.tile_size/2)), self.tile_size/3)
+
         # Draw Party
         px, py = party_pos
         pygame.draw.circle(screen, (255, 215, 0), (int(offset_x + px * self.tile_size + self.tile_size/2),
@@ -79,6 +84,8 @@ class DungeonView:
                 lines.append(f"TRAP: {tile.trap_id}")
             if hasattr(tile, 'has_loot') and tile.has_loot:
                 lines.append("LOOT: Treasure Chest")
+            if hasattr(tile, 'enemies') and tile.enemies:
+                lines.append(f"ENEMY: {tile.enemies[0].capitalize()}")
             if (tx, ty) == dungeon.exit_pos:
                 lines.append("EXIT: Stairs Up")
 

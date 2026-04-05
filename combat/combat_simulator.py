@@ -36,12 +36,6 @@ class CombatSimulator:
             round_num += 1
 
         victory = any(m.hp > 0 for m in party_members) and not any(e.hp > 0 for e in enemies)
-        xp_reward = 0
-        if victory:
-            xp_reward = len(enemies) * 20
-            for member in party_members:
-                if member.hp > 0:
-                    member.gain_xp(xp_reward)
         xp_gained = 0
         if victory:
             xp_gained = len(enemies) * 20

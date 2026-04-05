@@ -14,6 +14,7 @@ class DungeonTile:
     visible: bool = False
     trap_id: Optional[str] = None
     has_loot: bool = False
+    enemies: List[str] = field(default_factory=list)
 
 @dataclass
 class DungeonMap:
@@ -89,6 +90,14 @@ class DungeonGenerator:
                     px, py, pw, ph = rooms[-1]
                     self._create_h_tunnel(dungeon, px + pw // 2, x + w // 2, py + ph // 2)
                     self._create_v_tunnel(dungeon, py + ph // 2, y + h // 2, x + w // 2)
+
+                    # Add enemies to new rooms (except starting room)
+                    if self.rng.get_float() < 0.6:
+                        ex = self.rng.get_int(x, x + w - 1)
+                        ey = self.rng.get_int(y, y + h - 1)
+                        etile = dungeon.get_tile(ex, ey)
+                        if etile and not etile.is_wall:
+                            etile.enemies = [self.rng.choice(["orc", "skeleton", "bandit"])]
                 rooms.append((x, y, w, h))
 
         if rooms:

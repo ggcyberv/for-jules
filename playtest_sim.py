@@ -79,7 +79,7 @@ def simulate_playthrough():
     # 5. Test Save/Load Integrity
     print("Step 5: Testing Save/Load Persistence...")
     ctrl.state.global_flags["sim_test"] = True
-    SaveManager.save_game("data/saves/sim_test.sav")
+    SaveManager.save_game("data/saves/sim_test.sav", ctrl.world_settings)
 
     # Clear state
     ctrl.state = None

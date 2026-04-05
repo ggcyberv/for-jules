@@ -41,7 +41,14 @@ class GameController:
 
         self.audio = AudioManager()
         self.world_gen = None
-        self.state = None
+        self.world_settings = {
+            "danger_level": 0.6,
+            "urbanization": 0.4,
+            "loot_abundance": 0.5,
+            "magic_frequency": 0.6,
+            "faction_hostility": 0.3
+        }
+        self.state = GameState()
         self.game_running = False
 
         self.menu_view = MenuView(800, 600)
@@ -94,14 +101,7 @@ class GameController:
             import hashlib
             seed = int(hashlib.sha256(seed.encode()).hexdigest(), 16) % (2**32)
 
-        settings = {
-            "danger_level": 0.6,
-            "urbanization": 0.4,
-            "loot_abundance": 0.5,
-            "magic_frequency": 0.6,
-            "faction_hostility": 0.3
-        }
-        self.world_gen = WorldGenerator(seed, settings)
+        self.world_gen = WorldGenerator(seed, self.world_settings)
 
         from world.faction_system import NPCParty
         grid = HexGrid(chunk_size=10)
@@ -115,7 +115,7 @@ class GameController:
         self.event_manager.load_quests("data/quests", state.quest_manager)
 
         # Set initial faction relations based on hostility
-        hostility = settings.get("faction_hostility", 0.3)
+        hostility = self.world_settings.get("faction_hostility", 0.3)
         for faction_id in ["bandits", "undead"]:
             state.faction_system.adjust_reputation(faction_id, -int(hostility * 100))
 
@@ -299,12 +299,15 @@ class GameController:
                 EventTrigger.check_time()
                 self.logs.append(f"Turn {self.state.turn} begins.")
                 if self.state.ironman:
-                    SaveManager.save_game("data/saves/ironman.sav")
+                    SaveManager.save_game("data/saves/ironman.sav", self.world_settings)
             elif event.key == pygame.K_s:
-                SaveManager.save_game("data/saves/quicksave.sav")
+                SaveManager.save_game("data/saves/quicksave.sav", self.world_settings)
                 self.logs.append("Game saved.")
             elif event.key == pygame.K_l:
-                if SaveManager.load_game("data/saves/quicksave.sav"): self.logs.append("Game loaded.")
+                if SaveManager.load_game("data/saves/quicksave.sav"):
+                    self.world_settings = self.state.world_settings
+                    self.world_gen = WorldGenerator(self.state.seed, self.world_settings)
+                    self.logs.append("Game loaded.")
                 else: self.logs.append("Failed to load save.")
             elif event.key == pygame.K_t:
                 tl = list(TacticType)
@@ -350,6 +353,14 @@ class GameController:
                         self.state.party.gold += amount
                         self.logs.append(f"You found a treasure chest! Gained {amount} gold.")
                         tile.has_loot = False
+
+                    if hasattr(tile, 'enemies') and tile.enemies:
+                        enemy_id = tile.enemies[0]
+                        enemy = CombatSimulator.load_enemy(enemy_id)
+                        self.logs.append(f"Dungeon Encounter! A {enemy.name} jumps from the shadows!")
+                        self.active_combat = {"enemies": [enemy], "turn": 1}
+                        self.combat_log = [f"Battle against {enemy.name} initiated!"]
+                        tile.enemies = [] # Clear encounter
 
                     if (nx, ny) == self.state.active_dungeon.exit_pos:
                         quest = self.state.quest_manager.update_objective(f"dungeon_cleared_{self.state.active_dungeon_id}")
@@ -502,10 +513,12 @@ class GameController:
                         action = self.pause_view.handle_click(event.pos)
                         if action == "resume": self.paused = False
                         elif action == "save_game":
-                            SaveManager.save_game("data/saves/quicksave.sav")
+                            SaveManager.save_game("data/saves/quicksave.sav", self.world_settings)
                             self.logs.append("Game saved.")
                         elif action == "load_game":
                             if SaveManager.load_game("data/saves/quicksave.sav"):
+                                self.world_settings = self.state.world_settings
+                                self.world_gen = WorldGenerator(self.state.seed, self.world_settings)
                                 self.event_manager.load_quests("data/quests", self.state.quest_manager)
                                 self.paused = False
                         elif action == "main_menu":
@@ -568,8 +581,9 @@ class GameController:
                             self.state.compute_overworld_visibility()
                             self.message_view.show("The Journey Begins", "You stand at the edge of Riverfall. The Unbound Realm stretches before you, filled with ancient secrets and growing dangers. Lead your party to glory or ruin.")
                         elif action == "load_game":
-                            self.state = GameState()
                             if SaveManager.load_game("data/saves/quicksave.sav"):
+                                self.world_settings = self.state.world_settings
+                                self.world_gen = WorldGenerator(self.state.seed, self.world_settings)
                                 self.event_manager.load_quests("data/quests", self.state.quest_manager)
                                 self.game_running = True
                         elif action == "settings":
@@ -613,7 +627,8 @@ class GameController:
                     self.pre_battle_view.render(self.screen, self.active_combat["enemies"], self.current_tactic, self.current_formation)
                 else:
                     self.update_combat_animation()
-                    self.combat_view.render(self.screen, self.state.party.members, self.active_combat["enemies"], self.combat_log, self.active_combat["turn"])
+                    if self.active_combat:
+                        self.combat_view.render(self.screen, self.state.party.members, self.active_combat["enemies"], self.combat_log, self.active_combat["turn"])
             elif self.show_party_screen: self.party_view.render(self.screen, self.state.party)
             elif self.active_town: self.town_view.render(self.screen, self.active_town)
             elif self.state.active_dungeon: self.dungeon_view.render(self.screen, self.state.active_dungeon, self.state.dungeon_pos)

@@ -5,10 +5,11 @@ from engine.game_state import GameState
 
 class SaveManager:
     @staticmethod
-    def save_game(filepath: str):
+    def save_game(filepath: str, world_settings: dict):
         state = GameState()
         data = {
             "seed": state.seed,
+            "settings": world_settings,
             "turn": state.turn,
             "global_flags": state.global_flags,
             "world_facts": state.world_facts,
@@ -46,6 +47,13 @@ class SaveManager:
 
         state = GameState()
         state.seed = data["seed"]
+        state.world_settings = data.get("settings", {
+            "danger_level": 0.6,
+            "urbanization": 0.4,
+            "loot_abundance": 0.5,
+            "magic_frequency": 0.6,
+            "faction_hostility": 0.3
+        })
         state.turn = data["turn"]
         state.global_flags = data["global_flags"]
         state.world_facts = data.get("world_facts", [])
