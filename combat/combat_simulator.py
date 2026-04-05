@@ -25,13 +25,11 @@ class CombatSimulator:
     @staticmethod
     def simulate_battle(party_members: List[Character],
                         enemies: List[Character],
-                        tactic: TacticType = TacticType.BALANCED,
-                        formation: FormationType = FormationType.NONE,
-                        priority: AIPriority = AIPriority.NEAREST) -> Dict[str, Any]:
+                        formation: FormationType = FormationType.NONE) -> Dict[str, Any]:
         log = []
         round_num = 1
         while any(m.hp > 0 for m in party_members) and any(e.hp > 0 for e in enemies) and round_num <= 20:
-            round_res = CombatSimulator.simulate_round(party_members, enemies, round_num, tactic, formation, priority)
+            round_res = CombatSimulator.simulate_round(party_members, enemies, round_num, formation)
             log.extend(round_res["log"])
             round_num += 1
 
@@ -162,9 +160,11 @@ class CombatSimulator:
 
             if target.hp <= 0:
                 log.append(f"{defender_name} falls!")
-                # Significant morale loss for allies
+                # Significant morale loss for allies of the fallen
+                target_side = "enemy" if side == "party" else "party"
                 for u, s in all_units:
-                    if s == side: u.morale = max(0, u.morale - 10)
+                    if s == target_side:
+                        u.morale = max(0, u.morale - 15)
 
                 if side == "enemy":
                     CombatSimulator._check_for_injury(target, log)

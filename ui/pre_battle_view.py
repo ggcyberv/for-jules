@@ -10,6 +10,7 @@ class PreBattleView:
         self.height = 400
         self.rect = pygame.Rect((screen_width - self.width) // 2, (screen_height - self.height) // 2, self.width, self.height)
         self.font = pygame.font.SysFont("Arial", 16)
+        self.medium_font = pygame.font.SysFont("Arial", 18)
         self.large_font = pygame.font.SysFont("Arial", 22)
         self.button_rects: List[pygame.Rect] = []
         self.tactic_options = list(TacticType)

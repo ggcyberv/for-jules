@@ -16,7 +16,10 @@ def capture_screenshot(controller, filename):
     if not controller.game_running:
         controller.menu_view.render(controller.screen)
     elif controller.active_combat:
-        controller.combat_view.render(controller.screen, controller.state.party.members, controller.active_combat["enemies"], controller.combat_log, controller.active_combat["turn"])
+        if controller.pre_battle_active:
+            controller.pre_battle_view.render(controller.screen, controller.state.party.members, controller.active_combat["enemies"], controller.current_formation)
+        else:
+            controller.combat_view.render(controller.screen, controller.state.party.members, controller.active_combat["enemies"], controller.combat_log, controller.active_combat["turn"])
     elif controller.active_town:
         controller.town_view.render(controller.screen, controller.active_town)
     else:
@@ -47,7 +50,14 @@ def main():
     enemy = CombatSimulator.load_enemy("orc")
     gc.active_combat = {"enemies": [enemy], "turn": 1}
     gc.combat_log = ["Battle started!", "Alaric attacks Orc for 10 damage!"]
-    capture_screenshot(gc, "03_combat.png")
+
+    # 3a. Pre-Battle
+    gc.pre_battle_active = True
+    capture_screenshot(gc, "03a_pre_battle.png")
+
+    # 3b. Active Combat
+    gc.pre_battle_active = False
+    capture_screenshot(gc, "03b_combat.png")
 
     # 4. Town Screenshot
     from world.location import Town, TownNode

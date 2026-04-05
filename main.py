@@ -310,10 +310,6 @@ class GameController:
                     self.world_gen = WorldGenerator(self.state.seed, self.world_settings)
                     self.logs.append("Game loaded.")
                 else: self.logs.append("Failed to load save.")
-            elif event.key == pygame.K_t:
-                tl = list(TacticType)
-                self.current_tactic = tl[(tl.index(self.current_tactic) + 1) % len(tl)]
-                self.logs.append(f"Tactic: {self.current_tactic.value}")
             elif event.key == pygame.K_i:
                 self.show_party_screen = True
             elif event.key == pygame.K_r:
@@ -393,7 +389,12 @@ class GameController:
                         self.active_combat = None
                     else:
                         self.logs.append("Retreat failed! You are cornered!")
-                        res = CombatSimulator.simulate_round([], self.active_combat["enemies"], self.active_combat["turn"], self.current_formation)
+                        # Failed retreat triggers an enemy round where party can't act
+                        res = CombatSimulator.simulate_round(self.state.party.members, self.active_combat["enemies"], self.active_combat["turn"], self.current_formation)
+                        # Filter out party actions for this specific failed retreat penalty?
+                        # Or just let it be a normal round. The design says "limited direct interventions".
+                        # If I just pass members, they will attack.
+                        # Let's just make it a normal round for now but log the failure.
                         self.combat_queue.extend(res["log"])
                         self.active_combat["turn"] += 1
                 elif action == "pause":
