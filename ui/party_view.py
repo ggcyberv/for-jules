@@ -56,10 +56,10 @@ class PartyView:
         screen.blit(title_surf, (self.rect.x + 20, detail_y))
 
         # XP Bar
-        xp_text = f"XP: {char.xp} / {char.level * 100}"
+        xp_text = f"XP: {char.xp} / {char.xp_required}"
         xp_surf = self.small_font.render(xp_text, True, COLOR_TEXT_WHITE)
         screen.blit(xp_surf, (self.rect.x + 20, detail_y + 35))
-        UIHelper.draw_progress_bar(screen, self.rect.x + 20, detail_y + 55, 250, 10, char.xp % (char.level * 100), char.level * 100, COLOR_XP_GREEN)
+        UIHelper.draw_progress_bar(screen, self.rect.x + 20, detail_y + 55, 250, 10, char.xp, char.xp_required, COLOR_XP_GREEN)
 
         # Stats Display Refactored
         stat_y = detail_y + 80

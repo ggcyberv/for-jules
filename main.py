@@ -92,6 +92,7 @@ class GameController:
         event_bus.subscribe("random_encounter", self.on_random_encounter)
         event_bus.subscribe("enter_location", self.on_enter_location)
         event_bus.subscribe("trigger_story_event", self.on_trigger_story_event)
+        event_bus.subscribe("request_random_event", self.on_request_random_event)
         event_bus.subscribe("request_generation", self.check_chunks)
 
     def setup_game(self, seed: Optional[Any] = None):
@@ -226,6 +227,23 @@ class GameController:
         if event and event.check_conditions(self.state):
             self.active_event = event
 
+    def on_request_random_event(self, trigger_type, context):
+        eligible = self.event_manager.find_matching_events(self.state, trigger_type, context)
+        if not eligible:
+            return
+
+        # Select an event. We could use RNG or just the first best match.
+        # For variety, let's pick from the top 3 best matches.
+        count = min(3, len(eligible))
+        event = random.choice(eligible[:count])
+
+        # Don't trigger the same event twice in a row too easily
+        if self.active_event and self.active_event.event_id == event.event_id:
+            if len(eligible) > 1:
+                event = eligible[1]
+
+        self.active_event = event
+
     def resolve_choice(self, choice_idx):
         choice = self.active_event.choices[choice_idx]
         outcome = choice.outcome
@@ -276,6 +294,7 @@ class GameController:
                     last_q, last_r = self.state.party.q, self.state.party.r
                     if self.state.party.move_to(tq, tr, tile.movement_cost):
                         # Reveal surroundings on move
+                        EventTrigger.check_leave_hex(last_q, last_r)
                         EventTrigger.check_enter_hex(tq, tr, last_q, last_r)
                         self.state.compute_overworld_visibility()
 

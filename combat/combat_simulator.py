@@ -173,7 +173,7 @@ class CombatSimulator:
 
             target.hp = max(0, target.hp - damage)
             reduction = pre_mitigation - damage
-            log.append(f"{attacker_name} hits {defender_name} for {damage} dmg! ({pre_mitigation} base, -{reduction} armor)")
+            log.append(f"{attacker_name} attacks {defender_name} for {damage} dmg! ({pre_mitigation} base, -{reduction} armor)")
 
             # Apply Status Effects on certain conditions
             if not hasattr(target, 'status_effects'): target.status_effects = []

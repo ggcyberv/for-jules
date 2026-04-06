@@ -4,15 +4,13 @@ from engine.event_bus import event_bus
 
 class EventTrigger:
     @staticmethod
+    def check_trigger(trigger_type: str, context: Dict[str, Any]):
+        """Publishes a request for a random event of a specific type."""
+        event_bus.publish("request_random_event", trigger_type=trigger_type, context=context)
+
+    @staticmethod
     def check_enter_hex(q: int, r: int, last_q: int = None, last_r: int = None):
         state = GameState()
-
-        # Check border crossing
-        if last_q is not None:
-            last_tile = state.world.get_tile(last_q, last_r)
-            curr_tile = state.world.get_tile(q, r)
-            if last_tile and curr_tile and last_tile.faction_influence != curr_tile.faction_influence:
-                event_bus.publish("trigger_story_event", event_id="border_crossing")
 
         # Signal to generate chunks around current position
         event_bus.publish("request_generation", q=q, r=r)
@@ -25,33 +23,74 @@ class EventTrigger:
                 if ntile:
                     if not ntile.discovered:
                         ntile.discovered = True
-                    if dq == 0 and dr == 0:
-                        # Re-publish discovery for the specific tile we just entered
-                        pass
 
         tile = state.world.get_tile(q, r)
         if not tile: return
 
-        if state.party and state.party.forced_march:
-            event_bus.publish("trigger_story_event", event_id="forced_march_exhaustion")
+        context = {
+            "q": q, "r": r,
+            "terrain": tile.terrain_type,
+            "danger": tile.danger_rating,
+            "faction": tile.faction_influence,
+            "poi_id": tile.poi_id
+        }
 
+        # Check border crossing (Trigger Type B - NPC/News/Borders)
+        if last_q is not None:
+            last_tile = state.world.get_tile(last_q, last_r)
+            if last_tile and last_tile.faction_influence != tile.faction_influence:
+                EventTrigger.check_trigger("b", context)
+
+        # Forced March Check
+        if state.party and state.party.forced_march:
+            EventTrigger.check_trigger("a", context) # Could be a specific exhaustion event
+
+        # Random Encounter Check
         if tile.danger_rating > 0.85:
             event_bus.publish("random_encounter", q=q, r=r)
 
         if tile.poi_id:
             event_bus.publish("enter_location", poi_id=tile.poi_id)
 
-        if q == 2 and r == 2:
-            event_bus.publish("trigger_story_event", event_id="crypt_whispers_01")
+        # Generic "Enter Hex" trigger (Category A)
+        EventTrigger.check_trigger("a", context)
 
     @staticmethod
     def check_wait():
         state = GameState()
-        if state.consecutive_wait_turns >= 2:
-            event_bus.publish("trigger_story_event", event_id="whispers_from_well")
+        tile = state.world.get_tile(state.party.q, state.party.r)
+        context = {
+            "q": state.party.q, "r": state.party.r,
+            "terrain": tile.terrain_type if tile else "plains",
+            "danger": tile.danger_rating if tile else 0.0,
+            "faction": tile.faction_influence if tile else "neutral"
+        }
+        # Category C - Wait/Time
+        EventTrigger.check_trigger("c", context)
 
     @staticmethod
     def check_time():
         state = GameState()
-        if state.turn == 47:
-            event_bus.publish("trigger_story_event", event_id="traveling_merchant_spawn")
+        tile = state.world.get_tile(state.party.q, state.party.r)
+        context = {
+            "q": state.party.q, "r": state.party.r,
+            "terrain": tile.terrain_type if tile else "plains",
+            "danger": tile.danger_rating if tile else 0.0,
+            "faction": tile.faction_influence if tile else "neutral",
+            "turn": state.turn
+        }
+        # Category C - Wait/Time
+        EventTrigger.check_trigger("c", context)
+
+    @staticmethod
+    def check_leave_hex(q, r):
+        state = GameState()
+        tile = state.world.get_tile(q, r)
+        context = {
+            "q": q, "r": r,
+            "terrain": tile.terrain_type if tile else "plains",
+            "danger": tile.danger_rating if tile else 0.0,
+            "faction": tile.faction_influence if tile else "neutral"
+        }
+        # Category E - Leaving
+        EventTrigger.check_trigger("e", context)
