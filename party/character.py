@@ -71,58 +71,56 @@ class Character:
 
     @property
     def str(self) -> int:
-        if self.race == "NPC": return self.npc_attack # Map NPC attack to str for legacy compatibility
+        if self.race not in RACE_MODS: return self.base_str
         return self.base_str + RACE_MODS[self.race]["STR"] + AGE_MODS[self.age_category]["STR"] + \
                SIZE_MODS[self.size]["STR"] + BACKSTORY_MODS[self.backstory_name]["STR"]
 
     @property
     def agi(self) -> int:
-        if self.race == "NPC": return self.npc_speed
+        if self.race not in RACE_MODS: return self.base_agi
         return self.base_agi + RACE_MODS[self.race]["AGI"] + AGE_MODS[self.age_category]["AGI"] + \
                SIZE_MODS[self.size]["AGI"] + BACKSTORY_MODS[self.backstory_name]["AGI"]
 
     @property
     def con(self) -> int:
-        if self.race == "NPC": return 10
+        if self.race not in RACE_MODS: return self.base_con
         return self.base_con + RACE_MODS[self.race]["CON"] + AGE_MODS[self.age_category]["CON"] + \
                SIZE_MODS[self.size]["CON"] + BACKSTORY_MODS[self.backstory_name]["CON"]
 
     @property
     def per(self) -> int:
-        if self.race == "NPC": return 10
+        if self.race not in RACE_MODS: return self.base_per
         return self.base_per + RACE_MODS[self.race]["PER"] + AGE_MODS[self.age_category]["PER"] + \
                BACKSTORY_MODS[self.backstory_name]["PER"]
 
     @property
     def int(self) -> int:
-        if self.race == "NPC": return 10
+        if self.race not in RACE_MODS: return self.base_int
         return self.base_int + RACE_MODS[self.race]["INT"] + AGE_MODS[self.age_category]["INT"] + \
                BACKSTORY_MODS[self.backstory_name]["INT"]
 
     @property
     def cha(self) -> int:
-        if self.race == "NPC": return 10
+        if self.race not in RACE_MODS: return self.base_cha
         return self.base_cha + RACE_MODS[self.race]["CHA"] + AGE_MODS[self.age_category]["CHA"] + \
                BACKSTORY_MODS[self.backstory_name]["CHA"]
 
     @property
     def max_hp(self) -> int:
-        if self.race == "NPC": return self.hp # NPCs use set hp
         base_hp = (self.con * 12) + (self.level * 8)
         size_mod = SIZE_MODS[self.size].get("hp_mod", 0)
         age_mod = AGE_MODS[self.age_category].get("hp_mod", 0)
-        race_bonus = RACE_MODS[self.race].get("hp_bonus", 0)
+        race_bonus = RACE_MODS[self.race].get("hp_bonus", 0) if self.race in RACE_MODS else 0
         return int(base_hp * (1.0 + size_mod + age_mod + race_bonus))
 
     @property
     def max_mana(self) -> int:
         base_mana = (self.int * 10) + (self.level * 5) + (self.cha * 2)
-        race_bonus = RACE_MODS[self.race].get("mana_bonus", 0)
+        race_bonus = RACE_MODS[self.race].get("mana_bonus", 0) if self.race in RACE_MODS else 0
         return int(base_mana * (1.0 + race_bonus))
 
     @property
     def speed(self) -> int:
-        if self.race == "NPC": return self.npc_speed
         base_speed = 5 + (self.agi * 1.5) + (self.level * 0.5)
         # Size/Age speed mods not explicitly in doc but implies
         return int(base_speed)

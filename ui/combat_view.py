@@ -43,6 +43,17 @@ class CombatView:
             h_surf = self.medium_font.render(char.name, True, COLOR_TEXT_WHITE)
             screen.blit(h_surf, (px - 50, py + 35))
             UIHelper.draw_progress_bar(screen, px - 50, py + 55, 100, 8, char.hp, char.max_hp, COLOR_HP_RED)
+
+            # HP values text
+            hp_text = f"{int(char.hp)}/{char.max_hp}"
+            hp_surf = self.font.render(hp_text, True, (255, 200, 200))
+            screen.blit(hp_surf, (px + 55, py + 52))
+
+            # Mana values text
+            mana_text = f"{int(char.mana)}/{char.max_mana}"
+            mana_surf = self.font.render(mana_text, True, (100, 150, 255))
+            screen.blit(mana_surf, (px + 55, py + 65))
+
             py += 100
 
         # Draw Enemies
@@ -56,9 +67,18 @@ class CombatView:
             # Name and HP bar
             e_surf = self.medium_font.render(char.name, True, COLOR_TEXT_WHITE)
             screen.blit(e_surf, (ex - 50, ey + 35))
-            # Assume max_hp for enemies if not present (simple placeholder)
-            max_hp = getattr(char, 'max_hp', 50)
-            UIHelper.draw_progress_bar(screen, ex - 50, ey + 55, 100, 8, char.hp, max_hp, COLOR_HP_RED)
+            UIHelper.draw_progress_bar(screen, ex - 50, ey + 55, 100, 8, char.hp, char.max_hp, COLOR_HP_RED)
+
+            # HP values text
+            hp_text = f"{int(char.hp)}/{char.max_hp}"
+            hp_surf = self.font.render(hp_text, True, (255, 200, 200))
+            screen.blit(hp_surf, (ex - 90, ey + 52))
+
+            # Mana values text
+            mana_text = f"{int(char.mana)}/{char.max_mana}"
+            mana_surf = self.font.render(mana_text, True, (100, 150, 255))
+            screen.blit(mana_surf, (ex - 90, ey + 65))
+
             ey += 100
 
         # Draw Effects
@@ -71,8 +91,8 @@ class CombatView:
 
         # Draw Log Entries
         ly = log_rect.y + 10
-        for i, entry in enumerate(log[-6:]):
-            is_last = (i == len(log[-6:]) - 1)
+        for i, entry in enumerate(log[-7:]):
+            is_last = (i == len(log[-7:]) - 1)
             color = COLOR_TEXT_WHITE
             font = self.font
             if is_last:
@@ -110,7 +130,7 @@ class CombatView:
 
             label = f"Intervene: {action.capitalize()}"
             if action == "pause": label = "RESUME" if paused else "PAUSE"
-            elif action == "speed": label = "Speed: 2x" if speed > 1.0 else "Speed: 1x"
+            elif action == "speed": label = f"Speed: {speed}x"
 
             UIHelper.draw_button(screen, rect, label, self.font, is_hovered)
             self.button_rects.append(rect)

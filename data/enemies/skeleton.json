@@ -1,1 +1,1 @@
-{ "name": "Skeleton", "hp": 40, "attack": 10, "defense": 8, "speed": 3 }
+{ "name": "Skeleton", "race": "Human", "backstory": "Outlander", "level": 1, "STR": 10, "CON": 10, "AGI": 8, "PER": 12, "INT": 6, "CHA": 4 }

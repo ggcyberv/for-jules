@@ -84,7 +84,8 @@ class GameController:
         self.combat_queue = []
         self.combat_timer = 0
         self.combat_paused = False
-        self.combat_speed = 1.0 # 1.0 = normal, 2.0 = fast
+        self.combat_speed_idx = 1 # 0.25x, 0.5x, 1x, 1.5x, 2x
+        self.combat_speeds = [0.25, 0.5, 1.0, 1.5, 2.0]
         self.current_formation = FormationType.NONE
 
         event_bus.subscribe("hex_discovered", self.on_hex_discovered)
@@ -179,7 +180,7 @@ class GameController:
         if biome == "forest":
             enemy_id = "wolf" if roll < 0.7 else "bandit"
         elif biome == "mountain":
-            enemy_id = "skeleton"
+            enemy_id = "skeleton" if roll < 0.6 else "ghost"
         elif biome == "water":
             return # No water encounters for now
         else: # plains
@@ -418,7 +419,7 @@ class GameController:
                 elif action == "pause":
                     self.combat_paused = not self.combat_paused
                 elif action == "speed":
-                    self.combat_speed = 2.0 if self.combat_speed == 1.0 else 1.0
+                    self.combat_speed_idx = (self.combat_speed_idx + 1) % len(self.combat_speeds)
                 elif action == "tactics":
                     self.pre_battle_active = True
                 else:
@@ -436,8 +437,9 @@ class GameController:
 
         if not self.combat_queue: return
 
-        self.combat_timer += 1 * self.combat_speed
-        if self.combat_timer >= 15: # Roughly 0.5s at 30 FPS
+        speed = self.combat_speeds[self.combat_speed_idx]
+        self.combat_timer += 1 * speed
+        if self.combat_timer >= 25: # Slower overall (approx 0.8s at 1x)
             self.combat_timer = 0
             line = self.combat_queue.pop(0)
             self.combat_log.append(line)
@@ -669,7 +671,8 @@ class GameController:
                 else:
                     self.update_combat_animation()
                     if self.active_combat:
-                        self.combat_view.render(self.screen, self.state.party.members, self.active_combat["enemies"], self.combat_log, self.active_combat["turn"], self.combat_paused, self.combat_speed)
+                        speed = self.combat_speeds[self.combat_speed_idx]
+                        self.combat_view.render(self.screen, self.state.party.members, self.active_combat["enemies"], self.combat_log, self.active_combat["turn"], self.combat_paused, speed)
             elif self.show_party_screen: self.party_view.render(self.screen, self.state.party)
             elif self.active_town: self.town_view.render(self.screen, self.active_town)
             elif self.state.active_dungeon: self.dungeon_view.render(self.screen, self.state.active_dungeon, self.state.dungeon_pos)

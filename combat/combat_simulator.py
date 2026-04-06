@@ -12,15 +12,24 @@ class CombatSimulator:
         if os.path.exists(path):
             with open(path, "r") as f:
                 data = json.load(f)
-                return Character(
+                race = data.get("race", "Human")
+                backstory = data.get("backstory", "Soldier")
+                c = Character(
                     name=data["name"],
-                    race="NPC",
-                    hp=data["hp"],
-                    npc_attack=data["attack"],
-                    npc_defense=data["defense"],
-                    npc_speed=data["speed"]
+                    race=race,
+                    backstory_name=backstory,
+                    level=data.get("level", 1),
+                    base_str=data.get("STR", 10),
+                    base_agi=data.get("AGI", 10),
+                    base_con=data.get("CON", 10),
+                    base_per=data.get("PER", 10),
+                    base_int=data.get("INT", 10),
+                    base_cha=data.get("CHA", 10)
                 ).set_loot(data.get("loot_gold", 10))
-        return Character("Unknown", race="NPC", hp=20, npc_attack=5, npc_defense=5, npc_speed=3)
+                c.hp = c.max_hp
+                c.mana = c.max_mana
+                return c
+        return Character("Unknown", race="Human", backstory_name="Soldier").set_loot(10)
 
     @staticmethod
     def simulate_battle(party_members: List[Character],
@@ -60,11 +69,10 @@ class CombatSimulator:
                     [(e, "enemy") for e in enemies if e.hp > 0]
 
         # Determine action speed per unit
-        def get_speed(u, s):
-            if s == "enemy": return u.speed + (u.level * 0.3) # Simple npc action speed
+        def get_speed(u):
             return u.action_speed * f_effect.speed_mod
 
-        all_units.sort(key=lambda x: get_speed(x[0], x[1]), reverse=True)
+        all_units.sort(key=lambda x: get_speed(x[0]), reverse=True)
 
         for unit, side in all_units:
             if unit.hp <= 0: continue
@@ -143,24 +151,29 @@ class CombatSimulator:
                 target = random.choice(targets)
                 attacker_name, defender_name = "Enemy " + unit.name, target.name
 
-                # NPC Attack
-                atk = unit.npc_attack + (unit.level * 1.5)
+                # Dodge check for party member
+                if random.random() < target.dodge_chance:
+                    log.append(f"{defender_name} dodges the attack from {attacker_name}!")
+                    continue
+
+                # NPC Attack (Uses the same stat system)
+                weapon_dmg = 0 # Assume NPCs don't have separate weapon items for now
+                atk = (unit.phys_atk + weapon_dmg)
                 dmg_mult = 1.0
 
                 # Find target's formation/tactic defense mods
                 t_target_effect = TACTIC_EFFECTS[TacticType(target.combat_tactic)]
                 dfn_val = target.armor_val * t_target_effect.defense_mod * f_effect.defense_mod
 
-                # Dodge check for party member
-                if random.random() < target.dodge_chance:
-                    log.append(f"{defender_name} dodges the attack from {attacker_name}!")
-                    continue
-
             # Armor reduction: Damage * (100 / (100 + Armor))
-            damage = int(atk * (100.0 / (100.0 + dfn_val)) * dmg_mult)
+            mitigation_mult = (100.0 / (100.0 + dfn_val))
+            pre_mitigation = int(atk * dmg_mult)
+            damage = int(pre_mitigation * mitigation_mult)
             damage = max(1, damage)
+
             target.hp = max(0, target.hp - damage)
-            log.append(f"{attacker_name} attacks {defender_name} for {damage} damage!")
+            reduction = pre_mitigation - damage
+            log.append(f"{attacker_name} hits {defender_name} for {damage} dmg! ({pre_mitigation} base, -{reduction} armor)")
 
             # Apply Status Effects on certain conditions
             if not hasattr(target, 'status_effects'): target.status_effects = []

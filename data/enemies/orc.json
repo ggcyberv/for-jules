@@ -1,1 +1,1 @@
-{ "name": "Orc", "hp": 50, "attack": 12, "defense": 8, "speed": 4 }
+{ "name": "Orc", "race": "Orc", "backstory": "Soldier", "level": 1, "STR": 14, "CON": 12, "AGI": 8, "PER": 8, "INT": 6, "CHA": 8 }

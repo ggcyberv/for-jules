@@ -1,1 +1,1 @@
-{ "name": "Dire Wolf", "hp": 30, "attack": 15, "defense": 4, "speed": 8 }
+{ "name": "Dire Wolf", "race": "Orc", "backstory": "Outlander", "level": 1, "STR": 12, "CON": 10, "AGI": 14, "PER": 12, "INT": 4, "CHA": 4 }
