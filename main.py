@@ -106,8 +106,21 @@ class GameController:
         from world.faction_system import NPCParty
         grid = HexGrid(chunk_size=10)
 
-        hero1 = Character("Alaric", attack=15, defense=10, speed=6, accuracy=85, critical_chance=10, backstory="A disgraced knight seeking redemption.")
-        hero2 = Character("Elara", attack=10, defense=12, speed=5, accuracy=90, critical_chance=5, backstory="A nomadic healer from the eastern plains.")
+        hero1 = Character(
+            "Alaric",
+            backstory_name="Soldier",
+            race="Human",
+            base_str=12, base_con=12,
+            backstory="A disgraced knight seeking redemption."
+        )
+        hero2 = Character(
+            "Elara",
+            backstory_name="Acolyte",
+            race="Elf",
+            age_category="Young",
+            base_int=12, base_cha=12,
+            backstory="A nomadic healer from the eastern plains."
+        )
         party = Party(members=[hero1, hero2])
 
         state = GameState()
@@ -118,6 +131,11 @@ class GameController:
         hostility = self.world_settings.get("faction_hostility", 0.3)
         for faction_id in ["bandits", "undead"]:
             state.faction_system.adjust_reputation(faction_id, -int(hostility * 100))
+
+        # Manually initialize HP/Mana
+        for m in party.members:
+            m.hp = m.max_hp
+            m.mana = m.max_mana
 
         # Initial Global Diplomacy
         state.faction_system.adjust_faction_relation("nomads", "bandits", -30)

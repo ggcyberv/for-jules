@@ -14,13 +14,13 @@ class CombatSimulator:
                 data = json.load(f)
                 return Character(
                     name=data["name"],
+                    race="NPC",
                     hp=data["hp"],
-                    max_hp=data["hp"],
-                    attack=data["attack"],
-                    defense=data["defense"],
-                    speed=data["speed"]
+                    npc_attack=data["attack"],
+                    npc_defense=data["defense"],
+                    npc_speed=data["speed"]
                 ).set_loot(data.get("loot_gold", 10))
-        return Character("Unknown", hp=20, attack=5, defense=5, speed=3)
+        return Character("Unknown", race="NPC", hp=20, npc_attack=5, npc_defense=5, npc_speed=3)
 
     @staticmethod
     def simulate_battle(party_members: List[Character],
@@ -59,11 +59,10 @@ class CombatSimulator:
         all_units = [(m, "party") for m in party_members if m.hp > 0] + \
                     [(e, "enemy") for e in enemies if e.hp > 0]
 
-        # Determine speed mods per unit
+        # Determine action speed per unit
         def get_speed(u, s):
-            if s == "enemy": return u.speed
-            t_effect = TACTIC_EFFECTS[TacticType(u.combat_tactic)]
-            return u.effective_speed * t_effect.speed_mod * f_effect.speed_mod
+            if s == "enemy": return u.speed + (u.level * 0.3) # Simple npc action speed
+            return u.action_speed * f_effect.speed_mod
 
         all_units.sort(key=lambda x: get_speed(x[0], x[1]), reverse=True)
 
@@ -118,33 +117,48 @@ class CombatSimulator:
                         dmg_mult = 1.3
                         log.append(f"{attacker_name} performs a QUICK SHOT!")
 
-                # Accuracy check
-                if random.randint(1, 100) > unit.effective_accuracy:
-                    log.append(f"{attacker_name} misses {defender_name}!")
+                # Dodge check
+                if random.random() < target.dodge_chance:
+                    log.append(f"{defender_name} dodges the attack from {attacker_name}!")
                     continue
 
                 t_effect = TACTIC_EFFECTS[TacticType(unit.combat_tactic)]
-                atk = unit.effective_attack * t_effect.attack_mod * f_effect.attack_mod
+
+                # Physical Attack
+                weapon_dmg = 0
+                if unit.equipment.main_hand:
+                    weapon_dmg = random.randint(unit.equipment.main_hand.attack_bonus // 2, unit.equipment.main_hand.attack_bonus)
+
+                atk = (unit.phys_atk + weapon_dmg) * t_effect.attack_mod * f_effect.attack_mod
 
                 # Crit check
-                if random.randint(1, 100) <= unit.critical_chance:
-                    dmg_mult *= 1.5
+                if random.random() <= unit.crit_chance:
+                    dmg_mult *= unit.crit_damage
                     log.append("CRITICAL HIT!")
 
-                dfn = target.defense
+                dfn_val = target.armor_val
             else:
                 targets = [m for m in party_members if m.hp > 0]
                 if not targets: break
                 target = random.choice(targets)
                 attacker_name, defender_name = "Enemy " + unit.name, target.name
-                atk = unit.attack
+
+                # NPC Attack
+                atk = unit.npc_attack + (unit.level * 1.5)
                 dmg_mult = 1.0
 
                 # Find target's formation/tactic defense mods
                 t_target_effect = TACTIC_EFFECTS[TacticType(target.combat_tactic)]
-                dfn = target.effective_defense * t_target_effect.defense_mod * f_effect.defense_mod
+                dfn_val = target.armor_val * t_target_effect.defense_mod * f_effect.defense_mod
 
-            damage = max(1, int((atk - (dfn // 2)) * dmg_mult))
+                # Dodge check for party member
+                if random.random() < target.dodge_chance:
+                    log.append(f"{defender_name} dodges the attack from {attacker_name}!")
+                    continue
+
+            # Armor reduction: Damage * (100 / (100 + Armor))
+            damage = int(atk * (100.0 / (100.0 + dfn_val)) * dmg_mult)
+            damage = max(1, damage)
             target.hp = max(0, target.hp - damage)
             log.append(f"{attacker_name} attacks {defender_name} for {damage} damage!")
 

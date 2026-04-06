@@ -24,19 +24,18 @@ def test_infinite_map_chunks():
 
 def test_character_effective_stats():
     from party.item import Weapon, Armor
-    char = Character("Test", attack=10, defense=10, speed=10)
-    char.equipment.main_hand = Weapon("sword", "Sword", "Blade", 10, attack_bonus=5)
-    char.equipment.body = Armor("plate", "Plate", "Armor", 10, defense_bonus=10, speed_penalty=2)
+    char = Character("Test", race="Human", backstory_name="Soldier", base_str=10)
+    char.equipment.main_hand = Weapon("sword", "Sword", "Blade", 10, attack_bonus=10)
 
-    assert char.effective_attack == 15
-    assert char.effective_defense == 20
-    assert char.effective_speed == 8
+    # STR 10 + Human 1 + Soldier 2 = 13. Phys Atk = 13*3 + 1.5 = 40.5
+    # Total Phys Atk = 40.5 + Weapon roll (5-10)
+    assert char.phys_atk == 40.5
 
 def test_character_level_up():
     char = Character("Test", level=1, xp=0)
-    char.gain_xp(100)
+    char.gain_xp(1000) # New XP curve requires 1000 for lvl 2
     assert char.level == 2
-    assert char.attribute_points == 2
+    assert char.attribute_points == 1
 
 def test_game_state_singleton():
     s1 = GameState()

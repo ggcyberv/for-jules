@@ -71,6 +71,7 @@ class WorldGenerator:
                         # Add a recruit with backstory
                         recruit = Character(
                             f"Soldier {q}",
+                            backstory_name="Soldier",
                             backstory=f"A veteran of the border wars near {q},{r}."
                         )
                         recruit.skills = [Skill("Defense", "Better shielding.")]
@@ -100,7 +101,7 @@ class WorldGenerator:
                 TownNode("tavern", "Tavern", "Rest and hear rumors.", "tavern")
             ]
             start_town.inventory = [Weapon("iron_sword", "Iron Sword", "Simple blade.", 50, 3)]
-            recruit = Character("Brog", backstory="A former miner looking for glory.")
+            recruit = Character("Brog", backstory_name="Outlander", backstory="A former miner looking for glory.")
             recruit.skills = [Skill("Toughness", "Extra HP.")]
             start_town.recruits = [recruit]
             self.locations["start_town"] = start_town

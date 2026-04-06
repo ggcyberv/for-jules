@@ -61,29 +61,47 @@ class PartyView:
         screen.blit(xp_surf, (self.rect.x + 20, detail_y + 35))
         UIHelper.draw_progress_bar(screen, self.rect.x + 20, detail_y + 55, 250, 10, char.xp % (char.level * 100), char.level * 100, COLOR_XP_GREEN)
 
-        stats = [
-            ("Attack", char.attack, char.effective_attack),
-            ("Defense", char.defense, char.effective_defense),
-            ("Speed", char.speed, char.effective_speed),
-            ("Accuracy", char.accuracy, char.effective_accuracy),
-            ("Critical %", char.critical_chance, char.critical_chance)
-        ]
-        self.attr_rects = []
+        # Stats Display Refactored
         stat_y = detail_y + 80
         if char.attribute_points > 0:
             ap_surf = self.font.render(f"Attribute Points: {char.attribute_points}", True, COLOR_TEXT_GOLD)
             screen.blit(ap_surf, (self.rect.x + 20, stat_y))
             stat_y += 30
 
-        for i, (name, base, eff) in enumerate(stats):
-            text = f"{name}: {eff}"
+        base_stats = [
+            ("STR", char.str, "base_str"), ("AGI", char.agi, "base_agi"),
+            ("CON", char.con, "base_con"), ("PER", char.per, "base_per"),
+            ("INT", char.int, "base_int"), ("CHA", char.cha, "base_cha")
+        ]
+
+        self.attr_rects = []
+        for name, val, key in base_stats:
+            text = f"{name}: {val}"
             surf = self.font.render(text, True, COLOR_TEXT_WHITE)
             screen.blit(surf, (self.rect.x + 20, stat_y))
-            if char.attribute_points > 0 and i < 3: # Can only increase core stats
-                plus_rect = pygame.Rect(self.rect.x + 250, stat_y, 20, 20)
+            if char.attribute_points > 0:
+                plus_rect = pygame.Rect(self.rect.x + 100, stat_y, 20, 20)
                 UIHelper.draw_button(screen, plus_rect, "+", self.small_font, plus_rect.collidepoint(mx, my))
-                self.attr_rects.append((plus_rect, name.lower()))
-            stat_y += 30
+                self.attr_rects.append((plus_rect, key))
+            stat_y += 25
+
+        stat_y += 10
+        derived_stats = [
+            ("Phys Atk", f"{char.phys_atk:.1f}"),
+            ("Mag Atk", f"{char.mag_atk:.1f}"),
+            ("Armor", f"{char.armor_val:.1f}"),
+            ("Dodge", f"{char.dodge_chance*100:.1f}%"),
+            ("Crit", f"{char.crit_chance*100:.1f}%")
+        ]
+        for name, val in derived_stats:
+            text = f"{name}: {val}"
+            surf = self.font.render(text, True, (200, 200, 200))
+            screen.blit(surf, (self.rect.x + 140, detail_y + 110 + (derived_stats.index((name, val)) * 25)))
+
+        # Character Info (Race/Age/Size)
+        info_text = f"{char.race} | {char.age_category} | {char.size} | {char.backstory_name}"
+        info_surf = self.small_font.render(info_text, True, (150, 150, 150))
+        screen.blit(info_surf, (self.rect.x + 20, detail_y + 20))
 
         mid_x = self.rect.x + 300
         bs_title = self.font.render("Backstory:", True, (200, 200, 255))
@@ -262,9 +280,7 @@ class PartyView:
 
         for rect, attr in self.attr_rects:
             if rect.collidepoint(pos) and char.attribute_points > 0:
-                if attr == "attack": char.attack += 1
-                elif attr == "defense": char.defense += 1
-                elif attr == "speed": char.speed += 1
+                setattr(char, attr, getattr(char, attr) + 1)
                 char.attribute_points -= 1
                 return True
         return False
