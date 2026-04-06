@@ -35,7 +35,8 @@ def test_character_level_up():
     char = Character("Test", level=1, xp=0)
     char.gain_xp(1000) # New XP curve requires 1000 for lvl 2
     assert char.level == 2
-    assert char.attribute_points == 1
+    # Lvl 2 does not grant point (points at 4, 8, 12...)
+    assert char.attribute_points == 0
 
 def test_game_state_singleton():
     s1 = GameState()

@@ -79,31 +79,31 @@ class Character:
     def agi(self) -> int:
         if self.race == "NPC": return self.npc_speed
         return self.base_agi + RACE_MODS[self.race]["AGI"] + AGE_MODS[self.age_category]["AGI"] + \
-               SIZE_MODS[self.size]["AGI"] + BACKSTORY_MODS[self.backstory_name].get("AGI", 0)
+               SIZE_MODS[self.size]["AGI"] + BACKSTORY_MODS[self.backstory_name]["AGI"]
 
     @property
     def con(self) -> int:
         if self.race == "NPC": return 10
         return self.base_con + RACE_MODS[self.race]["CON"] + AGE_MODS[self.age_category]["CON"] + \
-               SIZE_MODS[self.size]["CON"] + BACKSTORY_MODS[self.backstory_name].get("CON", 0)
+               SIZE_MODS[self.size]["CON"] + BACKSTORY_MODS[self.backstory_name]["CON"]
 
     @property
     def per(self) -> int:
         if self.race == "NPC": return 10
         return self.base_per + RACE_MODS[self.race]["PER"] + AGE_MODS[self.age_category]["PER"] + \
-               BACKSTORY_MODS[self.backstory_name].get("PER", 0)
+               BACKSTORY_MODS[self.backstory_name]["PER"]
 
     @property
     def int(self) -> int:
         if self.race == "NPC": return 10
         return self.base_int + RACE_MODS[self.race]["INT"] + AGE_MODS[self.age_category]["INT"] + \
-               BACKSTORY_MODS[self.backstory_name].get("INT", 0)
+               BACKSTORY_MODS[self.backstory_name]["INT"]
 
     @property
     def cha(self) -> int:
         if self.race == "NPC": return 10
         return self.base_cha + RACE_MODS[self.race]["CHA"] + AGE_MODS[self.age_category]["CHA"] + \
-               BACKSTORY_MODS[self.backstory_name].get("CHA", 0)
+               BACKSTORY_MODS[self.backstory_name]["CHA"]
 
     @property
     def max_hp(self) -> int:

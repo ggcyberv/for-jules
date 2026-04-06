@@ -245,17 +245,21 @@ class PartyView:
                 screen.blit(lsurf, (self.rect.x + 20, y))
                 y += 20
 
-    def handle_keydown(self, key):
+    def handle_keydown(self, key, party: Party):
         if key == pygame.K_TAB:
             tabs = ["party", "journal", "lore", "combat", "world"]
             self.tab = tabs[(tabs.index(self.tab) + 1) % len(tabs)]
         elif self.tab in ["party", "combat"]:
-            if key == pygame.K_1: self.char_idx = 0
-            elif key == pygame.K_2: self.char_idx = 1
-            elif key == pygame.K_3: self.char_idx = 2
-            elif key == pygame.K_4: self.char_idx = 3
-            elif key == pygame.K_5: self.char_idx = 4
-            elif key == pygame.K_6: self.char_idx = 5
+            new_idx = -1
+            if key == pygame.K_1: new_idx = 0
+            elif key == pygame.K_2: new_idx = 1
+            elif key == pygame.K_3: new_idx = 2
+            elif key == pygame.K_4: new_idx = 3
+            elif key == pygame.K_5: new_idx = 4
+            elif key == pygame.K_6: new_idx = 5
+
+            if new_idx != -1 and new_idx < len(party.members):
+                self.char_idx = new_idx
 
     def handle_click(self, pos, party: Party) -> bool:
         if self.tab != "party" or not party.members: return False

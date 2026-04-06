@@ -644,7 +644,7 @@ class GameController:
                 if self.show_party_screen:
                     if event.type == pygame.KEYDOWN:
                         if event.key in [pygame.K_i, pygame.K_ESCAPE]: self.show_party_screen = False
-                        else: self.party_view.handle_keydown(event.key)
+                        else: self.party_view.handle_keydown(event.key, self.state.party)
                     elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
                         if self.party_view.handle_click(event.pos, self.state.party): self.logs.append("Attribute increased!")
                     continue

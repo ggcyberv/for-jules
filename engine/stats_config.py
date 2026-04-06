@@ -32,14 +32,14 @@ SIZE_MODS = {
 
 # Backstory Modifiers
 BACKSTORY_MODS = {
-    "Noble": {"CHA": 2, "INT": 1},
-    "Outlander": {"STR": 2, "CON": 1},
-    "Sage": {"INT": 3, "PER": 1},
-    "Criminal": {"AGI": 3, "PER": 1},
-    "Acolyte": {"CHA": 2, "CON": 2},
-    "Soldier": {"STR": 2, "CON": 2},
-    "Hermit": {"PER": 2, "INT": 2},
-    "Merchant": {"CHA": 2, "AGI": 1}
+    "Noble": {"STR": 0, "AGI": 0, "CON": 0, "PER": 0, "INT": 1, "CHA": 2},
+    "Outlander": {"STR": 2, "AGI": 0, "CON": 1, "PER": 0, "INT": 0, "CHA": 0},
+    "Sage": {"STR": 0, "AGI": 0, "CON": 0, "PER": 1, "INT": 3, "CHA": 0},
+    "Criminal": {"STR": 0, "AGI": 3, "CON": 0, "PER": 1, "INT": 0, "CHA": 0},
+    "Acolyte": {"STR": 0, "AGI": 0, "CON": 2, "PER": 0, "INT": 0, "CHA": 2},
+    "Soldier": {"STR": 2, "AGI": 0, "CON": 2, "PER": 0, "INT": 0, "CHA": 0},
+    "Hermit": {"STR": 0, "AGI": 0, "CON": 0, "PER": 2, "INT": 2, "CHA": 0},
+    "Merchant": {"STR": 0, "AGI": 1, "CON": 0, "PER": 0, "INT": 0, "CHA": 2}
 }
 
 # Weapon Types
