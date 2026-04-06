@@ -200,7 +200,10 @@ class GameController:
             self.active_town = loc
             self.logs.append(f"Entered town: {loc.name}.")
         elif isinstance(loc, Dungeon):
-            self.logs.append(f"Entering dungeon: {loc.name}!")
+            if not self.state.party.use_ap(1.0):
+                self.logs.append("Too exhausted to enter the dungeon (0 AP). Wait for a new day.")
+                return
+            self.logs.append(f"Entering dungeon: {loc.name}! (1 AP)")
             gen = DungeonGenerator(self.state.seed + loc.q + loc.r)
             self.state.active_dungeon = gen.generate(40, 20)
             self.state.active_dungeon_id = poi_id
@@ -269,6 +272,44 @@ class GameController:
             else: self.logs.append("Not enough gold!")
         self.active_event = None
 
+    def advance_day(self):
+        old_food = self.state.party.food
+        self.state.advance_turn()
+        if old_food == 0 and self.state.party.food == 0:
+            self.logs.append("The party is starving! Morale and health are failing.")
+
+        # Check NPC Encounters
+        for npc in self.state.npc_parties:
+            if (npc.q, npc.r) == (self.state.party.q, self.state.party.r):
+                rel = self.state.faction_system.get_reputation(npc.faction_id)
+                if rel <= -50:
+                    self.logs.append(f"Ambushed by {npc.name}!")
+                    self.active_combat = {"enemies": npc.members, "turn": 1}
+                    self.state.npc_parties.remove(npc)
+                else:
+                    self.on_trigger_story_event("npc_meeting", title=f"Meeting: {npc.name}", desc=f"You encounter a group of {npc.name}. They seem {self.state.faction_system.get_status(npc.faction_id).lower()}.", choices=[{"text": "Trade Rumors", "outcome": {"type": "message", "text": "They share some local gossip."}}, {"text": "Leave", "outcome": {"type": "message", "text": "Safe travels."}}])
+
+        # Check Timed Events
+        new_timed = []
+        for event_data in self.state.timed_events:
+            if event_data["trigger_turn"] <= self.state.turn:
+                self.on_trigger_story_event(event_data["event_id"])
+            else:
+                new_timed.append(event_data)
+        self.state.timed_events = new_timed
+
+        # Check Quest Deadlines
+        for q_id, quest in self.state.quest_manager.quests.items():
+            if quest.is_active and not quest.is_finished and quest.deadline_turn:
+                if self.state.turn > quest.deadline_turn:
+                    quest.is_finished = True
+                    self.logs.append(f"QUEST FAILED: {quest.title} - The deadline has passed.")
+
+        EventTrigger.check_time()
+        self.logs.append(f"Turn {self.state.turn} begins. AP restored.")
+        if self.state.ironman:
+            SaveManager.save_game("data/saves/ironman.sav", self.world_settings)
+
     def run_overworld(self, event):
         # Faction-specific ambience
         tile = self.state.world.get_tile(self.state.party.q, self.state.party.r)
@@ -292,53 +333,31 @@ class GameController:
                 tile = self.state.world.get_tile(tq, tr)
                 if tile and tile.terrain_type != "water":
                     last_q, last_r = self.state.party.q, self.state.party.r
-                    if self.state.party.move_to(tq, tr, tile.movement_cost):
+                    if self.state.party.move_to(tq, tr, 1.0):
                         # Reveal surroundings on move
                         EventTrigger.check_leave_hex(last_q, last_r)
                         EventTrigger.check_enter_hex(tq, tr, last_q, last_r)
                         self.state.compute_overworld_visibility()
 
+                        if self.state.party.current_ap <= 0:
+                            self.logs.append("The sun sets as you reach your destination. (Day ends)")
+                            self.advance_day()
+
         if event.type == pygame.KEYDOWN:
             if event.key == pygame.K_ESCAPE:
                 self.paused = True
-            elif event.key == pygame.K_SPACE:
-                old_food = self.state.party.food
-                self.state.advance_turn()
-                if old_food == 0 and self.state.party.food == 0:
-                    self.logs.append("The party is starving! Morale and health are failing.")
+            elif event.key == pygame.K_SPACE or event.key == pygame.K_RETURN:
+                if self.state.party.use_ap(1.0):
+                    self.state.ap_spent_in_hex += 1
+                    self.logs.append("You wait for 6 hours... (1 AP)")
+                    EventTrigger.check_wait()
 
-                # Check NPC Encounters
-                for npc in self.state.npc_parties:
-                    if (npc.q, npc.r) == (self.state.party.q, self.state.party.r):
-                        rel = self.state.faction_system.get_reputation(npc.faction_id)
-                        if rel <= -50:
-                            self.logs.append(f"Ambushed by {npc.name}!")
-                            self.active_combat = {"enemies": npc.members, "turn": 1}
-                            self.state.npc_parties.remove(npc)
-                        else:
-                            self.on_trigger_story_event("npc_meeting", title=f"Meeting: {npc.name}", desc=f"You encounter a group of {npc.name}. They seem {self.state.faction_system.get_status(npc.faction_id).lower()}.", choices=[{"text": "Trade Rumors", "outcome": {"type": "message", "text": "They share some local gossip."}}, {"text": "Leave", "outcome": {"type": "message", "text": "Safe travels."}}])
-
-                # Check Timed Events
-                new_timed = []
-                for event_data in self.state.timed_events:
-                    if event_data["trigger_turn"] <= self.state.turn:
-                        self.on_trigger_story_event(event_data["event_id"])
-                    else:
-                        new_timed.append(event_data)
-                self.state.timed_events = new_timed
-
-                # Check Quest Deadlines
-                for q_id, quest in self.state.quest_manager.quests.items():
-                    if quest.is_active and not quest.is_finished and quest.deadline_turn:
-                        if self.state.turn > quest.deadline_turn:
-                            quest.is_finished = True
-                            self.logs.append(f"QUEST FAILED: {quest.title} - The deadline has passed.")
-
-                EventTrigger.check_wait()
-                EventTrigger.check_time()
-                self.logs.append(f"Turn {self.state.turn} begins.")
-                if self.state.ironman:
-                    SaveManager.save_game("data/saves/ironman.sav", self.world_settings)
+                    if self.state.party.current_ap <= 0:
+                        self.logs.append("The day ends. You set up camp.")
+                        self.advance_day()
+                else:
+                    self.logs.append("You are too exhausted to wait anymore. The day must end.")
+                    self.advance_day()
             elif event.key == pygame.K_s:
                 SaveManager.save_game("data/saves/quicksave.sav", self.world_settings)
                 self.logs.append("Game saved.")
@@ -499,6 +518,7 @@ class GameController:
                     self.message_view.show("Combat Victory!", "\n".join(summary_lines))
                     self.logs.append(f"Combat Victory! Gained {xp} XP and {gold} Gold.")
                     self.active_combat = None
+                    EventTrigger.check_after_combat()
                 elif not any(m.hp > 0 for m in self.state.party.members):
                     self.logs.append("Party Wiped Out...")
                     self.active_combat = None

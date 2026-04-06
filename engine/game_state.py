@@ -36,7 +36,7 @@ class GameState:
             cls._instance.quest_manager: Optional[QuestManager] = None
             cls._instance.lore_manager: Optional[LoreManager] = None
             cls._instance.ironman: bool = False
-            cls._instance.consecutive_wait_turns: int = 0
+            cls._instance.ap_spent_in_hex: int = 0
             cls._instance.last_pos: Tuple[int, int] = (0, 0)
             cls._instance.world_facts: List[WorldFact] = []
             cls._instance.timed_events: List[Dict[str, Any]] = []
@@ -66,10 +66,8 @@ class GameState:
             self.current_weather = random.choice(["Rainy", "Foggy", "Stormy", "Clear"])
         if self.party:
             self.party.rest()
-            if (self.party.q, self.party.r) == self.last_pos:
-                self.consecutive_wait_turns += 1
-            else:
-                self.consecutive_wait_turns = 0
+            if (self.party.q, self.party.r) != self.last_pos:
+                self.ap_spent_in_hex = 0
                 self.last_pos = (self.party.q, self.party.r)
 
         # Update NPC Parties

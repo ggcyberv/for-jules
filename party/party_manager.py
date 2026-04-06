@@ -10,8 +10,8 @@ class Party:
     food: int = 50
     q: int = 0
     r: int = 0
-    max_ap: float = 10.0
-    current_ap: float = 10.0
+    max_ap: float = 4.0
+    current_ap: float = 4.0
     forced_march: bool = False
 
     def add_member(self, character: Character):
@@ -20,24 +20,30 @@ class Party:
             return True
         return False
 
-    def move_to(self, q: int, r: int, cost: float):
+    def move_to(self, q: int, r: int, cost: float = 1.0):
         self.forced_march = False
-        if self.current_ap >= cost:
+        if self.current_ap >= 1.0:
             # Consume stamina
             for m in self.members:
-                m.stamina = max(0, m.stamina - int(cost * 5))
+                m.stamina = max(0, m.stamina - 10)
             self.q = q
             self.r = r
-            self.current_ap -= cost
+            self.current_ap -= 1.0
             return True
-        elif len(self.members) > 0 and all(m.hp > 5 for m in self.members):
+        elif len(self.members) > 0 and all(m.hp > 10 for m in self.members):
             # Forced march at the cost of HP
             self.q = q
             self.r = r
             self.current_ap = 0
             self.forced_march = True
             for m in self.members:
-                m.hp -= 5
+                m.hp -= 10
+            return True
+        return False
+
+    def use_ap(self, amount: float = 1.0) -> bool:
+        if self.current_ap >= amount:
+            self.current_ap -= amount
             return True
         return False
 

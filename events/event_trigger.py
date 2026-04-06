@@ -11,7 +11,7 @@ class EventTrigger:
     @staticmethod
     def check_enter_hex(q: int, r: int, last_q: int = None, last_r: int = None):
         state = GameState()
-
+        import random
         # Signal to generate chunks around current position
         event_bus.publish("request_generation", q=q, r=r)
 
@@ -52,12 +52,14 @@ class EventTrigger:
         if tile.poi_id:
             event_bus.publish("enter_location", poi_id=tile.poi_id)
 
-        # Generic "Enter Hex" trigger (Category A)
-        EventTrigger.check_trigger("a", context)
+        # Generic "Enter Hex" trigger (Category A) - 5% chance
+        if random.random() < 0.05:
+            EventTrigger.check_trigger("a", context)
 
     @staticmethod
     def check_wait():
         state = GameState()
+        import random
         tile = state.world.get_tile(state.party.q, state.party.r)
         context = {
             "q": state.party.q, "r": state.party.r,
@@ -66,7 +68,10 @@ class EventTrigger:
             "faction": tile.faction_influence if tile else "neutral"
         }
         # Category C - Wait/Time
-        EventTrigger.check_trigger("c", context)
+        # Stayed for prolonged time: every AP after the first 2 has a 3% chance
+        if state.ap_spent_in_hex > 2:
+            if random.random() < 0.03:
+                EventTrigger.check_trigger("c", context)
 
     @staticmethod
     def check_time():
@@ -79,8 +84,24 @@ class EventTrigger:
             "faction": tile.faction_influence if tile else "neutral",
             "turn": state.turn
         }
-        # Category C - Wait/Time
-        EventTrigger.check_trigger("c", context)
+        # Category C - Wait/Time (Global ticks)
+        # EventTrigger.check_trigger("c", context)
+        pass
+
+    @staticmethod
+    def check_after_combat():
+        state = GameState()
+        import random
+        tile = state.world.get_tile(state.party.q, state.party.r)
+        context = {
+            "q": state.party.q, "r": state.party.r,
+            "terrain": tile.terrain_type if tile else "plains",
+            "danger": tile.danger_rating if tile else 0.0,
+            "faction": tile.faction_influence if tile else "neutral"
+        }
+        # After fight - 8% chance
+        if random.random() < 0.08:
+            EventTrigger.check_trigger("b", context) # Use Category B for post-combat news/NPCs? Or maybe Category F.
 
     @staticmethod
     def check_leave_hex(q, r):

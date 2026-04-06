@@ -59,6 +59,8 @@ def test_severity_sorting(state):
     matches = em.find_matching_events(state, "a", context)
     assert matches[0].event_id == "e_low"
 
+from unittest.mock import patch
+
 def test_event_trigger_generic(state):
     triggered = []
     def on_req(trigger_type, context):
@@ -67,20 +69,41 @@ def test_event_trigger_generic(state):
     event_bus.subscribe("request_random_event", on_req)
 
     try:
-        # Trigger Category A
-        # Manually add tile since we are in a test without the generator
-        from world.hex_grid import HexTile
-        state.world.add_tile(HexTile(1, 1, terrain_type="plains", danger_rating=0.1))
+        with patch("random.random", return_value=0.0):
+            # Trigger Category A
+            # Manually add tile since we are in a test without the generator
+            from world.hex_grid import HexTile
+            state.world.add_tile(HexTile(1, 1, terrain_type="plains", danger_rating=0.1))
 
-        EventTrigger.check_enter_hex(1, 1)
-        assert any(t[0] == "a" for t in triggered), f"Triggered were: {triggered}"
+            EventTrigger.check_enter_hex(1, 1)
+            assert any(t[0] == "a" for t in triggered), f"Triggered were: {triggered}"
 
-        # Trigger Category C
-        EventTrigger.check_wait()
-        assert any(t[0] == "c" for t in triggered)
+            # Trigger Category C
+            state.ap_spent_in_hex = 5
+            EventTrigger.check_wait()
+            assert any(t[0] == "c" for t in triggered)
 
-        # Trigger Category E
-        EventTrigger.check_leave_hex(1, 1)
-        assert any(t[0] == "e" for t in triggered)
+            # Trigger Category E
+            EventTrigger.check_leave_hex(1, 1)
+            assert any(t[0] == "e" for t in triggered)
     finally:
         event_bus.unsubscribe("request_random_event", on_req)
+
+def test_ap_consumption(state):
+    from world.hex_grid import HexTile
+    state.world.add_tile(HexTile(1, 1, terrain_type="plains", danger_rating=0.1))
+
+    initial_ap = state.party.current_ap
+    assert initial_ap == 4.0
+
+    # Move costs 1 AP
+    state.party.move_to(1, 1)
+    assert state.party.current_ap == 3.0
+
+    # use_ap helper
+    state.party.use_ap(1.0)
+    assert state.party.current_ap == 2.0
+
+    # Advance turn resets AP
+    state.advance_turn()
+    assert state.party.current_ap == 4.0
