@@ -13,6 +13,14 @@ COLOR_AP_BLUE = (50, 100, 250)
 COLOR_BUTTON_HOVER = (60, 60, 80)
 COLOR_BUTTON_NORMAL = (45, 45, 60)
 
+# Rarity Colors
+COLOR_RARITY_COMMON = (255, 255, 255)
+COLOR_RARITY_UNCOMMON = (30, 255, 0)
+COLOR_RARITY_RARE = (0, 112, 221)
+COLOR_RARITY_EPIC = (163, 53, 238)
+COLOR_RARITY_LEGENDARY = (255, 128, 0)
+COLOR_RARITY_MYTHIC = (255, 0, 0)
+
 class UIHelper:
     @staticmethod
     def draw_frame(surface: pygame.Surface, rect: pygame.Rect, border_color=COLOR_FRAME_GOLD, bg_color=COLOR_PANEL_BG, border_width=2):

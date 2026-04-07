@@ -133,24 +133,71 @@ class PartyView:
         eq_x = self.rect.x + 520
         eq_title = self.font.render("Equipment:", True, (200, 200, 255))
         screen.blit(eq_title, (eq_x, detail_y))
-        eq_slots = [("Main Hand", char.equipment.main_hand), ("Body", char.equipment.body)]
-        for i, (slot, item) in enumerate(eq_slots):
-            item_name = item.name if item else "None"
-            surf = self.font.render(f"{slot}:", True, (150, 150, 150)); screen.blit(surf, (eq_x, detail_y + 30 + i * 40))
-            name_surf = self.small_font.render(item_name, True, (255, 255, 255)); screen.blit(name_surf, (eq_x, detail_y + 50 + i * 40))
+
+        # 9 Slots Layout (Ring x2, Shield)
+        from party.item import Weapon, Armor, Shield, Item as GearItem
+        eq_slots = [
+            ("Weapon", char.equipment.main_hand, "main_hand"),
+            ("Armor", char.equipment.body, "body"),
+            ("Shield", char.equipment.shield, "shield"),
+            ("Helm", char.equipment.helm, "helm"),
+            ("Gloves", char.equipment.gloves, "gloves"),
+            ("Boots", char.equipment.boots, "boots"),
+            ("Amulet", char.equipment.amulet, "amulet"),
+            ("Ring 1", char.equipment.ring1, "ring1"),
+            ("Ring 2", char.equipment.ring2, "ring2")
+        ]
+
+        self.eq_rects = []
+        for i, (label, item, key) in enumerate(eq_slots):
+            col = i // 5
+            row = i % 5
+            sx = eq_x + col * 120
+            sy = detail_y + 30 + row * 45
+
+            item_name = item.display_name if item else "None"
+            color = item.rarity.color if item else (150, 150, 150)
+
+            surf = self.small_font.render(f"{label}:", True, (150, 150, 150))
+            screen.blit(surf, (sx, sy))
+
+            name_surf = self.small_font.render(item_name, True, color)
+            name_rect = name_surf.get_rect(topleft=(sx, sy + 15))
+            screen.blit(name_surf, name_rect)
+
+            # Store rect for hit detection (tooltips handled below)
+            hit_rect = pygame.Rect(sx, sy, 110, 40)
+            self.eq_rects.append((hit_rect, item))
 
         inv_y = self.rect.y + 380
         inv_title = self.font.render(f"Party Inventory (Gold: {party.gold}, Food: {party.food}):", True, (200, 255, 200))
         screen.blit(inv_title, (self.rect.x + 20, inv_y))
         self.inv_rects = []
-        for i, item in enumerate(party.inventory[:9]):
+        for i, item in enumerate(party.inventory[:12]):
             ix = self.rect.x + 20 + (i % 3) * 230; iy = inv_y + 30 + (i // 3) * 20
             i_rect = pygame.Rect(ix, iy, 200, 20)
             is_hovered = i_rect.collidepoint(mx, my)
-            text = f"- {str(item.name if hasattr(item, 'name') else item)}"
-            color = COLOR_TEXT_GOLD if is_hovered else (200, 200, 200)
+
+            if isinstance(item, GearItem):
+                text = f"- {item.display_name} (Lvl {item.item_level})"
+                color = item.rarity.color
+            else:
+                text = f"- {str(item)}"
+                color = (200, 200, 200)
+
+            if is_hovered: color = COLOR_TEXT_GOLD
             screen.blit(self.small_font.render(text, True, color), (ix, iy))
             self.inv_rects.append((i_rect, i))
+
+        # Tooltips layer (render last to overlap)
+        for rect, item in self.eq_rects:
+            if rect.collidepoint(mx, my) and item:
+                self._render_item_tooltip(screen, mx, my, item)
+        for i_rect, idx in self.inv_rects:
+            if i_rect.collidepoint(mx, my) and idx < len(party.inventory):
+                item = party.inventory[idx]
+                if isinstance(item, GearItem):
+                    self._render_item_tooltip(screen, mx, my, item)
 
         footer = "1-6: Switch | TAB: Tabs | ESC/I: Close"
         f_surf = self.small_font.render(footer, True, (150, 150, 150)); screen.blit(f_surf, (self.rect.x + 20, self.rect.bottom - 30))
@@ -261,25 +308,76 @@ class PartyView:
             if new_idx != -1 and new_idx < len(party.members):
                 self.char_idx = new_idx
 
+    def _render_item_tooltip(self, screen, x, y, item):
+        from party.item import Weapon, Armor
+        lines = [f"{item.display_name} ({item.rarity.label})", f"Level {item.item_level} {item.slot.name.lower().capitalize()}"]
+
+        if isinstance(item, Weapon):
+            lines.append(f"Damage: {item.base_dmg_min}-{item.base_dmg_max}")
+            for stat, scale in item.scaling.items():
+                lines.append(f"Scaling: {int(scale*100)}% {stat}")
+            for prop, val in item.properties.items():
+                lines.append(f"{prop.replace('_', ' ').capitalize()}: {val}")
+        elif isinstance(item, Armor):
+            lines.append(f"Armor: {item.base_armor}")
+            if item.speed_penalty: lines.append(f"Speed Penalty: {item.speed_penalty}")
+            if item.dodge_penalty: lines.append(f"Dodge Penalty: {int(item.dodge_penalty*100)}%")
+            for eff, val in item.bonus_effects.items():
+                lines.append(f"{eff.capitalize()}: {val}")
+
+        for affix in item.affixes:
+            sign = "+" if affix.value > 0 else ""
+            val_str = f"{sign}{affix.value:.1f}%" if affix.is_percent else f"{sign}{int(affix.value)}"
+            lines.append(f"{affix.name}: {val_str} {affix.stat}")
+
+        padding = 10
+        line_surfs = [self.small_font.render(l, True, (255, 255, 255)) for l in lines]
+        width = max(s.get_width() for s in line_surfs) + padding * 2
+        height = sum(s.get_height() + 2 for s in line_surfs) + padding * 2
+
+        rect = pygame.Rect(x + 15, y, width, height)
+        if rect.right > self.width + self.rect.x: rect.right = x - 15
+
+        pygame.draw.rect(screen, (20, 20, 30), rect)
+        pygame.draw.rect(screen, item.rarity.color, rect, 1)
+
+        curr_y = rect.y + padding
+        for surf in line_surfs:
+            screen.blit(surf, (rect.x + padding, curr_y))
+            curr_y += surf.get_height() + 2
+
     def handle_click(self, pos, party: Party) -> bool:
         if self.tab != "party" or not party.members: return False
         char = party.members[self.char_idx]
 
         # Equipment logic
-        from party.item import Weapon, Armor
+        from party.item import Weapon, Armor, Shield, EquipSlot, Item as GearItem
         for i_rect, idx in getattr(self, 'inv_rects', []):
             if i_rect.collidepoint(pos) and idx < len(party.inventory):
                 item = party.inventory[idx]
-                if isinstance(item, Weapon):
-                    # Swap main hand
-                    old = char.equipment.main_hand
-                    char.equipment.main_hand = item
-                    party.inventory[idx] = old if old else "Scrap Metal"
-                    return True
-                elif isinstance(item, Armor):
-                    old = char.equipment.body
-                    char.equipment.body = item
-                    party.inventory[idx] = old if old else "Old Rags"
+                if not isinstance(item, GearItem): continue
+
+                # Determine target slot
+                slot_key = None
+                if item.slot == EquipSlot.WEAPON: slot_key = "main_hand"
+                elif item.slot == EquipSlot.ARMOR: slot_key = "body"
+                elif item.slot == EquipSlot.SHIELD: slot_key = "shield"
+                elif item.slot == EquipSlot.HELM: slot_key = "helm"
+                elif item.slot == EquipSlot.GLOVES: slot_key = "gloves"
+                elif item.slot == EquipSlot.BOOTS: slot_key = "boots"
+                elif item.slot == EquipSlot.AMULET: slot_key = "amulet"
+                elif item.slot == EquipSlot.RING:
+                    if char.equipment.ring1 is None: slot_key = "ring1"
+                    elif char.equipment.ring2 is None: slot_key = "ring2"
+                    else: slot_key = "ring1"
+
+                if slot_key:
+                    old = getattr(char.equipment, slot_key)
+                    setattr(char.equipment, slot_key, item)
+                    if old:
+                        party.inventory[idx] = old
+                    else:
+                        party.inventory.pop(idx)
                     return True
 
         for rect, attr in self.attr_rects:

@@ -215,9 +215,12 @@ class GameController:
                 m.morale = min(m.max_morale, m.morale + 20)
                 m.stamina = min(m.max_stamina, m.max_stamina + 10)
         elif loc.location_type == "resource_node":
-            amount = random.randint(10, 30)
-            self.state.party.gold += amount
-            self.logs.append(f"Scavenged {amount} gold from {loc.name}.")
+            from party.gear_generator import GearGenerator
+            # Basic level scaling for drops
+            drop_level = max(1, self.state.turn // 10)
+            item = GearGenerator.generate_item(drop_level)
+            self.state.party.inventory.append(item)
+            self.logs.append(f"Scavenged {item.display_name} from {loc.name}.")
         elif loc.location_type == "watchtower":
             self.logs.append(f"You climbed {loc.name}. Your view of the realm is greatly expanded.")
             self.state.compute_overworld_visibility()

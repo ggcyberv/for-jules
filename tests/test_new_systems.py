@@ -23,13 +23,17 @@ def test_infinite_map_chunks():
     assert grid.get_tile(25, 25) is not None
 
 def test_character_effective_stats():
-    from party.item import Weapon, Armor
+    from party.item import Weapon, Armor, EquipSlot, Rarity
     char = Character("Test", race="Human", backstory_name="Soldier", base_str=10)
-    char.equipment.main_hand = Weapon("sword", "Sword", "Blade", 10, attack_bonus=10)
+    # STR 10 + Human 1 + Soldier 2 = 13. natural_phys_atk = 13*3 + 1*1.5 = 40.5
 
-    # STR 10 + Human 1 + Soldier 2 = 13. Phys Atk = 13*3 + 1.5 = 40.5
-    # Total Phys Atk = 40.5 + Weapon roll (5-10)
-    assert char.phys_atk == 40.5
+    char.equipment.main_hand = Weapon(
+        item_id="sword", name="Sword", description="Blade", slot=EquipSlot.WEAPON,
+        rarity=Rarity.COMMON, item_level=1, base_dmg_min=5, base_dmg_max=5
+    )
+
+    # Total Phys Atk = 40.5 + 5 = 45.5
+    assert char.phys_atk == 45.5
 
 def test_character_level_up():
     char = Character("Test", level=1, xp=0)

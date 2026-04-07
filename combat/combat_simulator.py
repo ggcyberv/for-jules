@@ -80,7 +80,13 @@ class CombatSimulator:
             # Status: Stun check
             if hasattr(unit, 'status_effects') and "stun" in unit.status_effects:
                 log.append(f"{unit.name} is stunned and skips their turn!")
-                unit.status_effects.remove("stun")
+                # Decrease stun duration/remove
+                if isinstance(unit.status_effects["stun"], int):
+                    unit.status_effects["stun"] -= 1
+                    if unit.status_effects["stun"] <= 0:
+                        del unit.status_effects["stun"]
+                else:
+                    del unit.status_effects["stun"]
                 continue
 
             # Morale Check
@@ -125,26 +131,36 @@ class CombatSimulator:
                         dmg_mult = 1.3
                         log.append(f"{attacker_name} performs a QUICK SHOT!")
 
-                # Dodge check
-                if random.random() < target.dodge_chance:
+                # Accuracy vs Dodge
+                accuracy_mod = 0
+                if unit.equipment.main_hand and "accuracy" in unit.equipment.main_hand.properties:
+                    accuracy_mod = unit.equipment.main_hand.properties["accuracy"]
+
+                # Sword property: reduces dodge by 5% (accuracy bonus)
+                if random.random() < max(0, target.dodge_chance - accuracy_mod):
                     log.append(f"{defender_name} dodges the attack from {attacker_name}!")
                     continue
 
                 t_effect = TACTIC_EFFECTS[TacticType(unit.combat_tactic)]
 
-                # Physical Attack
-                weapon_dmg = 0
-                if unit.equipment.main_hand:
-                    weapon_dmg = random.randint(unit.equipment.main_hand.attack_bonus // 2, unit.equipment.main_hand.attack_bonus)
+                # Reach Property (Spear)
+                if unit.equipment.main_hand and "reach" in unit.equipment.main_hand.properties:
+                    # Logic for rows could be added here if positions were implemented
+                    pass
 
-                atk = (unit.phys_atk + weapon_dmg) * t_effect.attack_mod * f_effect.attack_mod
+                # Armor Penetration
+                armor_pen = 0
+                if unit.equipment.main_hand and "armor_pen" in unit.equipment.main_hand.properties:
+                    armor_pen = unit.equipment.main_hand.properties["armor_pen"]
+
+                atk = unit.phys_atk * t_effect.attack_mod * f_effect.attack_mod
 
                 # Crit check
                 if random.random() <= unit.crit_chance:
                     dmg_mult *= unit.crit_damage
                     log.append("CRITICAL HIT!")
 
-                dfn_val = target.armor_val
+                dfn_val = target.armor_val * (1.0 - armor_pen)
             else:
                 targets = [m for m in party_members if m.hp > 0]
                 if not targets: break
@@ -157,18 +173,23 @@ class CombatSimulator:
                     continue
 
                 # NPC Attack (Uses the same stat system)
-                weapon_dmg = 0 # Assume NPCs don't have separate weapon items for now
-                atk = (unit.phys_atk + weapon_dmg)
+                atk = unit.phys_atk
                 dmg_mult = 1.0
 
                 # Find target's formation/tactic defense mods
                 t_target_effect = TACTIC_EFFECTS[TacticType(target.combat_tactic)]
                 dfn_val = target.armor_val * t_target_effect.defense_mod * f_effect.defense_mod
 
-            # Armor reduction: Damage * (100 / (100 + Armor))
-            mitigation_mult = (100.0 / (100.0 + dfn_val))
+            # Block Chance (Shield)
+            if target.equipment.shield:
+                if random.random() < target.equipment.shield.block_chance:
+                    dmg_mult *= 0.5
+                    log.append(f"{defender_name} BLOCKS with their shield! (50% reduction)")
+
+            # Armor reduction formula: Damage reduction = Armor / (Armor + 200)
+            reduction_pct = dfn_val / (dfn_val + 200)
             pre_mitigation = int(atk * dmg_mult)
-            damage = int(pre_mitigation * mitigation_mult)
+            damage = int(pre_mitigation * (1.0 - reduction_pct))
             damage = max(1, damage)
 
             target.hp = max(0, target.hp - damage)
@@ -176,9 +197,16 @@ class CombatSimulator:
             log.append(f"{attacker_name} attacks {defender_name} for {damage} dmg! ({pre_mitigation} base, -{reduction} armor)")
 
             # Apply Status Effects on certain conditions
-            if not hasattr(target, 'status_effects'): target.status_effects = []
+            if not hasattr(target, 'status_effects'): target.status_effects = {}
+
+            # Mace property: 10% stun
+            if unit.equipment.main_hand and "stun_chance" in unit.equipment.main_hand.properties:
+                if random.random() < unit.equipment.main_hand.properties["stun_chance"]:
+                    target.status_effects["stun"] = 1
+                    log.append(f"{target.name} is STUNNED by the heavy blow!")
+
             if "Skeleton" in attacker_name and random.random() < 0.2:
-                target.status_effects.append("stun")
+                target.status_effects["stun"] = 1
                 log.append(f"{target.name} is STUNNED by the bone-crushing blow!")
 
             # Morale Reduction on damage
