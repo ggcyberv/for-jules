@@ -75,6 +75,10 @@ class CombatSimulator:
         all_units.sort(key=lambda x: get_speed(x[0]), reverse=True)
 
         for unit, side in all_units:
+            # Re-check victory condition mid-round
+            if not any(m.hp > 0 for m in party_members) or not any(e.hp > 0 for e in enemies):
+                break
+
             if unit.hp <= 0: continue
 
             # Status: Stun check

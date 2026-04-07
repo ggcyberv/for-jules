@@ -55,14 +55,28 @@ class PartyView:
         title_surf = self.large_font.render(f"{char.name} - Level {char.level}", True, COLOR_TEXT_GOLD)
         screen.blit(title_surf, (self.rect.x + 20, detail_y))
 
-        # XP Bar
+        # HP/Mana/XP Bars
+        bar_y = detail_y + 35
+
+        # HP
+        hp_text = f"HP: {int(char.hp)} / {char.max_hp}"
+        screen.blit(self.small_font.render(hp_text, True, COLOR_TEXT_WHITE), (self.rect.x + 20, bar_y))
+        UIHelper.draw_progress_bar(screen, self.rect.x + 20, bar_y + 15, 250, 12, char.hp, char.max_hp, COLOR_HP_RED)
+        bar_y += 35
+
+        # Mana
+        mana_text = f"Mana: {int(char.mana)} / {char.max_mana}"
+        screen.blit(self.small_font.render(mana_text, True, COLOR_TEXT_WHITE), (self.rect.x + 20, bar_y))
+        UIHelper.draw_progress_bar(screen, self.rect.x + 20, bar_y + 15, 250, 12, char.mana, char.max_mana, (50, 50, 200))
+        bar_y += 35
+
+        # XP
         xp_text = f"XP: {char.xp} / {char.xp_required}"
-        xp_surf = self.small_font.render(xp_text, True, COLOR_TEXT_WHITE)
-        screen.blit(xp_surf, (self.rect.x + 20, detail_y + 35))
-        UIHelper.draw_progress_bar(screen, self.rect.x + 20, detail_y + 55, 250, 10, char.xp, char.xp_required, COLOR_XP_GREEN)
+        screen.blit(self.small_font.render(xp_text, True, COLOR_TEXT_WHITE), (self.rect.x + 20, bar_y))
+        UIHelper.draw_progress_bar(screen, self.rect.x + 20, bar_y + 15, 250, 8, char.xp, char.xp_required, COLOR_XP_GREEN)
 
         # Stats Display Refactored
-        stat_y = detail_y + 80
+        stat_y = bar_y + 35
         if char.attribute_points > 0:
             ap_surf = self.font.render(f"Attribute Points: {char.attribute_points}", True, COLOR_TEXT_GOLD)
             screen.blit(ap_surf, (self.rect.x + 20, stat_y))
@@ -75,17 +89,15 @@ class PartyView:
         ]
 
         self.attr_rects = []
-        for name, val, key in base_stats:
+        for i, (name, val, key) in enumerate(base_stats):
             text = f"{name}: {val}"
             surf = self.font.render(text, True, COLOR_TEXT_WHITE)
-            screen.blit(surf, (self.rect.x + 20, stat_y))
+            screen.blit(surf, (self.rect.x + 20, stat_y + i * 25))
             if char.attribute_points > 0:
-                plus_rect = pygame.Rect(self.rect.x + 100, stat_y, 20, 20)
+                plus_rect = pygame.Rect(self.rect.x + 100, stat_y + i * 25, 20, 20)
                 UIHelper.draw_button(screen, plus_rect, "+", self.small_font, plus_rect.collidepoint(mx, my))
                 self.attr_rects.append((plus_rect, key))
-            stat_y += 25
 
-        stat_y += 10
         derived_stats = [
             ("Phys Atk", f"{char.phys_atk:.1f}"),
             ("Mag Atk", f"{char.mag_atk:.1f}"),
@@ -93,10 +105,11 @@ class PartyView:
             ("Dodge", f"{char.dodge_chance*100:.1f}%"),
             ("Crit", f"{char.crit_chance*100:.1f}%")
         ]
-        for name, val in derived_stats:
+        for i, (name, val) in enumerate(derived_stats):
             text = f"{name}: {val}"
             surf = self.font.render(text, True, (200, 200, 200))
-            screen.blit(surf, (self.rect.x + 140, detail_y + 110 + (derived_stats.index((name, val)) * 25)))
+            # Shift derived stats right and align with base stats
+            screen.blit(surf, (self.rect.x + 150, stat_y + i * 25))
 
         # Character Info (Race/Age/Size)
         info_text = f"{char.race} | {char.age_category} | {char.size} | {char.backstory_name}"
