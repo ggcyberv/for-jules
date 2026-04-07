@@ -200,11 +200,16 @@ class GameController:
             self.active_town = loc
             self.logs.append(f"Entered town: {loc.name}.")
         elif isinstance(loc, Dungeon):
+            if loc.is_cleared and self.state.turn < loc.respawn_turn:
+                self.logs.append(f"{loc.name} is currently empty. It will take time for new inhabitants to arrive.")
+                return
+
             if not self.state.party.use_ap(1.0):
                 self.logs.append("Too exhausted to enter the dungeon (0 AP). Wait for a new day.")
                 return
+
             self.logs.append(f"Entering dungeon: {loc.name}! (1 AP)")
-            gen = DungeonGenerator(self.state.seed + loc.q + loc.r)
+            gen = DungeonGenerator(self.state.seed + loc.q + loc.r + self.state.turn) # add turn to vary slightly if respawned
             self.state.active_dungeon = gen.generate(40, 20)
             self.state.active_dungeon_id = poi_id
             self.state.dungeon_pos = self.state.active_dungeon.start_pos
@@ -269,15 +274,40 @@ class GameController:
         elif outcome["type"] == "buy":
             if self.state.party.gold >= outcome["cost"]:
                 self.state.party.gold -= outcome["cost"]
-                self.state.party.inventory.append(outcome["item"])
-                outcome["loc"].inventory.remove(outcome["item"])
-                self.logs.append(f"Purchased {outcome['item'].name}!")
+                item = outcome["item"]
+                if item == "food":
+                    self.state.party.food += 10
+                    self.logs.append("Purchased 10 rations!")
+                else:
+                    self.state.party.inventory.append(item)
+                    if item in outcome["loc"].inventory:
+                        outcome["loc"].inventory.remove(item)
+                    self.logs.append(f"Purchased {getattr(item, 'display_name', str(item))}!")
             else: self.logs.append("Not enough gold!")
         self.active_event = None
 
     def advance_day(self):
         old_food = self.state.party.food
         self.state.advance_turn()
+
+        # Preemptive Town Restock
+        for loc in self.state.locations.values():
+            if isinstance(loc, Town):
+                if not hasattr(loc, "last_restock"): loc.last_restock = -99
+                if self.state.turn >= loc.last_restock + 3:
+                    from party.gear_generator import GearGenerator
+                    loc.inventory = [GearGenerator.generate_item(max(1, self.state.turn // 5)) for _ in range(random.randint(3, 6))]
+                    loc.last_restock = self.state.turn
+
+        # Dungeon Respawn Logic
+        for loc in self.state.locations.values():
+            if isinstance(loc, Dungeon) and loc.is_cleared:
+                if self.state.turn >= loc.respawn_turn:
+                    loc.is_cleared = False
+                    # Optionally log this if it's a known dungeon
+                    if self.state.global_flags.get(f"seen_{loc.poi_id}"):
+                        self.logs.append(f"Rumors say that {loc.name} has been re-occupied.")
+
         if old_food == 0 and self.state.party.food == 0:
             self.logs.append("The party is starving! Morale and health are failing.")
 
@@ -290,7 +320,8 @@ class GameController:
                     self.active_combat = {"enemies": npc.members, "turn": 1}
                     self.state.npc_parties.remove(npc)
                 else:
-                    self.on_trigger_story_event("npc_meeting", title=f"Meeting: {npc.name}", desc=f"You encounter a group of {npc.name}. They seem {self.state.faction_system.get_status(npc.faction_id).lower()}.", choices=[{"text": "Trade Rumors", "outcome": {"type": "message", "text": "They share some local gossip."}}, {"text": "Leave", "outcome": {"type": "message", "text": "Safe travels."}}])
+                    # Friendly/Neutral (The Blue Circles)
+                    self.on_trigger_story_event("npc_meeting", title=f"Meeting: {npc.name}", desc=f"You encounter a group of {npc.name} (Blue Circle). They seem {self.state.faction_system.get_status(npc.faction_id).lower()}.", choices=[{"text": "Trade Rumors", "outcome": {"type": "message", "text": "They share some local gossip."}}, {"text": "Leave", "outcome": {"type": "message", "text": "Safe travels."}}])
 
         # Check Timed Events
         new_timed = []
@@ -392,6 +423,10 @@ class GameController:
                 self.state.active_dungeon = None
                 self.logs.append("Returned to Overworld.")
                 return
+            elif event.key == pygame.K_i:
+                self.show_party_screen = True
+                return
+
             if dx != 0 or dy != 0:
                 nx, ny = self.state.dungeon_pos[0] + dx, self.state.dungeon_pos[1] + dy
                 tile = self.state.active_dungeon.get_tile(nx, ny)
@@ -421,11 +456,16 @@ class GameController:
                         tile.enemies = [] # Clear encounter
 
                     if (nx, ny) == self.state.active_dungeon.exit_pos:
+                        loc = self.state.locations.get(self.state.active_dungeon_id)
+                        if isinstance(loc, Dungeon):
+                            loc.is_cleared = True
+                            loc.respawn_turn = self.state.turn + 10 # 10 days to respawn
+
                         quest = self.state.quest_manager.update_objective(f"dungeon_cleared_{self.state.active_dungeon_id}")
                         if quest:
                             self.logs.append(f"QUEST COMPLETE: {quest.title}!")
                             self.state.party.gold += quest.rewards.get("gold", 0)
-                        self.logs.append("Dungeon cleared!")
+                        self.logs.append("Dungeon cleared! It will remain empty for a while.")
                         self.state.active_dungeon = None
 
     def run_town(self, event):
@@ -436,6 +476,8 @@ class GameController:
             if event.key == pygame.K_ESCAPE:
                 self.active_town = None
                 self.logs.append("Left town.")
+            elif event.key == pygame.K_i:
+                self.show_party_screen = True
 
     def run_combat(self, event):
         self.audio.play_ambient("combat")
@@ -529,6 +571,28 @@ class GameController:
                     self.victory = False
 
     def handle_town_node(self, node: TownNode):
+        if node.service_type == "market":
+            # Check for restock (every 3 days / turns)
+            if not hasattr(self.active_town, "last_restock"): self.active_town.last_restock = -99
+            if self.state.turn >= self.active_town.last_restock + 3:
+                from party.gear_generator import GearGenerator
+                # restock 3-6 items
+                self.active_town.inventory = [GearGenerator.generate_item(max(1, self.state.turn // 5)) for _ in range(random.randint(3, 6))]
+                self.active_town.last_restock = self.state.turn
+                self.logs.append(f"{self.active_town.name} market has new arrivals!")
+
+            choices = []
+            for item in self.active_town.inventory:
+                name = getattr(item, "display_name", str(item))
+                val = item.value if hasattr(item, "value") else 50
+                choices.append({"text": f"{name} ({val}g)", "outcome": {"type": "buy", "item": item, "cost": val, "loc": self.active_town}})
+
+            choices.append({"text": "Buy Food (10 units, 20g)", "outcome": {"type": "buy", "item": "food", "cost": 20}})
+            choices.append({"text": "Leave", "outcome": {"type": "message", "text": "Browsing finished."}})
+
+            self.on_trigger_story_event("market_v2_" + self.active_town.poi_id, title="Market", desc="The merchant shows you their latest wares.", choices=choices)
+            return
+
         if node.service_type == "healer":
             cost = self.active_town.healing_cost
             if self.state.party.gold >= cost:

@@ -100,7 +100,8 @@ class WorldGenerator:
                 TownNode("blacksmith", "Blacksmith", "Upgrade equipment.", "blacksmith"),
                 TownNode("tavern", "Tavern", "Rest and hear rumors.", "tavern")
             ]
-            start_town.inventory = [Weapon("iron_sword", "Iron Sword", "Simple blade.", 50, 3)]
+            from party.gear_generator import GearGenerator
+            start_town.inventory = [GearGenerator.generate_item(1) for _ in range(5)]
             recruit = Character("Brog", backstory_name="Outlander", backstory="A former miner looking for glory.")
             recruit.skills = [Skill("Toughness", "Extra HP.")]
             start_town.recruits = [recruit]

@@ -33,6 +33,7 @@ class Dungeon(Location):
     location_type: str = "dungeon"
     danger_level: float = 0.5
     is_cleared: bool = False
+    respawn_turn: int = 0
     loot_table: str = "default_dungeon"
 
 @dataclass
