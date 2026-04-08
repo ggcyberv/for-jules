@@ -129,10 +129,21 @@ class GameController:
         state.initialize(grid, party, seed, self.world_gen.locations)
         self.event_manager.load_quests("data/quests", state.quest_manager)
 
+        # Initialize Factions
+        from world.faction_system import Faction
+        for f_id, pos in self.world_gen.capitals.items():
+            f = Faction(f_id, f_id.capitalize(), f"The {f_id} faction.", capital_pos=pos)
+            state.faction_system.register_faction(f)
+
         # Set initial faction relations based on hostility
         hostility = self.world_settings.get("faction_hostility", 0.3)
         for faction_id in ["bandits", "undead"]:
             state.faction_system.adjust_reputation(faction_id, -int(hostility * 100))
+            # Set Strategic Goals
+            if faction_id in state.faction_system.factions:
+                f = state.faction_system.factions[faction_id]
+                f.strategic_goals = ["Expansionist"]
+                f.resources["influence"] = 20
 
         # Manually initialize HP/Mana
         for m in party.members:
@@ -290,6 +301,11 @@ class GameController:
         old_food = self.state.party.food
         self.state.advance_turn()
 
+        # Tick Faction System
+        if self.state.faction_system:
+            new_parties = self.state.faction_system.tick(self.state.world, self.state.turn)
+            self.state.npc_parties.extend(new_parties)
+
         # Preemptive Town Restock
         for loc in self.state.locations.values():
             if isinstance(loc, Town):
@@ -368,6 +384,11 @@ class GameController:
                 if tile and tile.terrain_type != "water":
                     last_q, last_r = self.state.party.q, self.state.party.r
                     if self.state.party.move_to(tq, tr, 1.0):
+                        # Proactive Simulation Tick (traveling takes 6 hours)
+                        if self.state.simulation:
+                            for _ in range(6):
+                                self.state.simulation.tick()
+
                         # Reveal surroundings on move
                         EventTrigger.check_leave_hex(last_q, last_r)
                         EventTrigger.check_enter_hex(tq, tr, last_q, last_r)
@@ -384,6 +405,12 @@ class GameController:
                 if self.state.party.use_ap(1.0):
                     self.state.ap_spent_in_hex += 1
                     self.logs.append("You wait for 6 hours... (1 AP)")
+
+                    # Proactive Simulation Tick (6 hours = 6 ticks)
+                    if self.state.simulation:
+                        for _ in range(6):
+                            self.state.simulation.tick()
+
                     EventTrigger.check_wait()
 
                     if self.state.party.current_ap <= 0:

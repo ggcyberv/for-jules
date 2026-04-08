@@ -42,6 +42,7 @@ class GameState:
             cls._instance.timed_events: List[Dict[str, Any]] = []
             cls._instance.npc_parties: List[NPCParty] = []
             cls._instance.current_weather: str = "Clear"
+            cls._instance.simulation: Any = None
         return cls._instance
 
     def initialize(self, world: HexGrid, party: Party, seed: int, locations: Dict[str, Any]):
@@ -54,9 +55,23 @@ class GameState:
         self.faction_system = FactionSystem()
         self.quest_manager = QuestManager()
         self.lore_manager = LoreManager()
+
+        from engine.simulation import WorldSimulation
+        self.simulation = WorldSimulation()
+
         self.active_dungeon = None
         self.active_dungeon_id = None
         self.ironman = False
+
+    def query_facts(self, actor_name: str = None, description_contains: str = None, turn_range: Tuple[int, int] = None) -> List[WorldFact]:
+        results = self.world_facts
+        if actor_name:
+            results = [f for f in results if actor_name in f.actors]
+        if description_contains:
+            results = [f for f in results if description_contains in f.description]
+        if turn_range:
+            results = [f for f in results if turn_range[0] <= f.turn_recorded <= turn_range[1]]
+        return results
 
     def advance_turn(self):
         self.turn += 1

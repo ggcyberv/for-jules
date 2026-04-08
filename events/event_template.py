@@ -45,6 +45,15 @@ class EventTemplate:
             if cond_key == "fact_occurred":
                 if not any(f.fact_id == cond_val for f in state.world_facts):
                     return False
+            if cond_key == "fact_query":
+                # Complex query: {actor: str, description: str, recent_turns: int}
+                actor = cond_val.get("actor")
+                desc = cond_val.get("description")
+                recent = cond_val.get("recent_turns")
+                turn_range = (state.turn - recent, state.turn) if recent else None
+                matches = state.query_facts(actor_name=actor, description_contains=desc, turn_range=turn_range)
+                if not matches:
+                    return False
             if cond_key == "required_item" and state.party:
                 if not any(item.name == cond_val for item in state.party.inventory):
                     return False

@@ -27,6 +27,8 @@ class Town(Location):
     healing_cost: int = 20
     recruits: List[Character] = field(default_factory=list)
     recruitment_cost: int = 100
+    commodities: Dict[str, int] = field(default_factory=lambda: {"grain": 100, "iron": 20, "cloth": 50})
+    commodity_prices: Dict[str, int] = field(default_factory=lambda: {"grain": 10, "iron": 50, "cloth": 25})
 
 @dataclass
 class Dungeon(Location):

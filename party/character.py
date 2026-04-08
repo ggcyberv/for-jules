@@ -1,5 +1,5 @@
 from dataclasses import dataclass, field
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, Any
 import math
 import random
 from party.item import Equipment, Weapon, Armor
@@ -65,6 +65,13 @@ class Character:
     attribute_points: int = 0
     combat_log: List[str] = field(default_factory=list)
     loot_gold: int = 0
+
+    # Simulation fields
+    needs: Dict[str, float] = field(default_factory=lambda: {"hunger": 0.0, "thirst": 0.0, "sleep": 0.0, "social": 0.0})
+    personality_traits: List[str] = field(default_factory=list)
+    goals: Dict[str, float] = field(default_factory=lambda: {"wealth": 0.5, "power": 0.2, "safety": 0.8})
+    current_activity: Optional[Dict[str, Any]] = None
+    last_social_tick: int = 0
 
     def set_loot(self, gold: int):
         self.loot_gold = gold
