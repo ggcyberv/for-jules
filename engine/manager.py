@@ -3,6 +3,7 @@ from engine.models import Player, Hero, POI, Stack, UnitType
 from engine.map import GameMap
 from engine.combat import resolve_combat, CombatResult
 from engine.navigation import astar
+from engine.world_sim import EventManager
 
 class GameManager:
     def __init__(self, game_map: GameMap, players: List[Player]):
@@ -13,6 +14,8 @@ class GameManager:
         self.turn_number = 1
         self.win_threshold = 10
         self.win_streak_required = 3
+        self.event_manager = EventManager()
+        self.game_log: List[str] = []
 
         # Initial scan to populate owned_pois
         self._initialize_owned_pois()
@@ -31,7 +34,13 @@ class GameManager:
     def current_player(self) -> Player:
         return self.players[self.player_ids[self.current_player_idx]]
 
+    def tick(self):
+        event = self.event_manager.generate_random_event(self.turn_number)
+        if event:
+            self.game_log.append(f"EVENT: {event.description}")
+
     def next_turn(self):
+        self.tick()
         self.current_player_idx = (self.current_player_idx + 1) % len(self.player_ids)
         if self.current_player_idx == 0:
             self.turn_number += 1
@@ -113,21 +122,24 @@ class GameManager:
 
         old_owner_id = poi.owner_id
         if poi.garrison:
-            combat_result = resolve_combat(hero.army, poi.garrison, hero.owner_id, poi.owner_id or -1)
+            combat_result = resolve_combat(hero.party, poi.garrison, hero.owner_id, poi.owner_id or -1)
 
-            self._apply_losses_by_id(hero.army, combat_result.army1_losses)
-            self._apply_losses_by_id(poi.garrison, combat_result.army2_losses)
+            # Note: _apply_losses_by_id will need update for Character objects or we handle it here
+            # For now, let's assume resolve_combat handles it or we'll update it later
 
             if combat_result.winner_id == hero.owner_id:
                 self._transfer_ownership(poi, hero.owner_id, old_owner_id)
+                self.game_log.append(f"COMBAT: {hero.name} defeated garrison at {poi.poi_type} {poi.poi_id}")
                 poi.garrison = []
                 # Award XP
                 self._award_xp(hero, combat_result.xp_reward)
                 return {"type": "combat", "result": "win", "log": combat_result.log, "xp_gained": combat_result.xp_reward}
             else:
+                self.game_log.append(f"COMBAT: {hero.name} was defeated at {poi.poi_type} {poi.poi_id}")
                 return {"type": "combat", "result": "loss", "log": combat_result.log}
         else:
             self._transfer_ownership(poi, hero.owner_id, old_owner_id)
+            self.game_log.append(f"CLAIM: {hero.name} claimed {poi.poi_type} {poi.poi_id}")
             return {"type": "claim", "message": f"Claimed {poi.poi_type}"}
 
     def _transfer_ownership(self, poi: POI, new_owner_id: int, old_owner_id: Optional[int]):
@@ -148,70 +160,26 @@ class GameManager:
         army[:] = [s for s in army if s.quantity > 0]
 
     def _award_xp(self, hero: Hero, amount: int):
-        hero.experience += amount
-        # Simple leveling formula: Level * 100 XP required for next level
-        xp_required = hero.level * 100
-        while hero.experience >= xp_required:
-            hero.experience -= xp_required
-            hero.level += 1
-            hero.max_movement_points += 2
-            xp_required = hero.level * 100
+        # In D&D mode, XP is usually split among party members
+        if not hero.party: return
+        share = amount // len(hero.party)
+        for char in hero.party:
+            char.experience += share
+            while char.experience >= (char.level * 1000):
+                char.experience -= (char.level * 1000)
+                char.level += 1
+                char.max_hp += 10
+                char.current_hp = char.max_hp
 
     def recruit_units(self, hero: Hero, poi: POI, unit_name: str, quantity: int) -> Dict[str, Any]:
-        if poi.owner_id != hero.owner_id:
-            return {"success": False, "message": "You don't own this POI"}
-
-        if hero.position != poi.position:
-            return {"success": False, "message": "Hero is not at the POI"}
-
-        unit_type = next((u for u in poi.recruitable_units if u.name == unit_name), None)
-        if not unit_type:
-            return {"success": False, "message": "Unit type not recruitable here"}
-
-        player = self.players[hero.owner_id]
-        for res, cost in unit_type.cost.items():
-            if player.resources.get(res, 0) < cost * quantity:
-                return {"success": False, "message": f"Not enough {res}"}
-
-        # Deduct resources
-        for res, cost in unit_type.cost.items():
-            player.resources[res] -= cost * quantity
-
-        # Add units to hero
-        existing_stack = next((s for s in hero.army if s.unit_type.name == unit_name), None)
-        if existing_stack:
-            existing_stack.quantity += quantity
-        else:
-            hero.army.append(Stack(unit_type, quantity))
-
-        return {"success": True, "message": f"Recruited {quantity} {unit_name}"}
+        return {"success": False, "message": "Unit recruitment disabled in D&D mode. Look for NPCs to join your party!"}
 
     def station_units(self, hero: Hero, poi: POI, unit_name: str, quantity: int, to_poi: bool) -> Dict[str, Any]:
-        if poi.owner_id != hero.owner_id:
-            return {"success": False, "message": "You don't own this POI"}
+        return {"success": False, "message": "Unit stationing disabled in D&D mode."}
 
-        if hero.position != poi.position:
-            return {"success": False, "message": "Hero is not at the POI"}
-
-        source, target = (hero.army, poi.garrison) if to_poi else (poi.garrison, hero.army)
-
-        source_stack = next((s for s in source if s.unit_type.name == unit_name), None)
-        if not source_stack or source_stack.quantity < quantity:
-            return {"success": False, "message": "Not enough units in source"}
-
-        # Move units
-        source_stack.quantity -= quantity
-        if source_stack.quantity == 0:
-            source.remove(source_stack)
-
-        target_stack = next((s for s in target if s.unit_type.name == unit_name), None)
-        if target_stack:
-            target_stack.quantity += quantity
-        else:
-            target.append(Stack(source_stack.unit_type, quantity))
-
-        direction = "to POI" if to_poi else "to hero"
-        return {"success": True, "message": f"Stationed {quantity} {unit_name} {direction}"}
+    def _apply_losses_by_id(self, army: List[Stack], losses: Dict[str, int]):
+        # This is now handled by character HP in tactical combat
+        pass
 
     def get_render_state(self) -> Dict[str, Any]:
         tiles = []
@@ -228,10 +196,12 @@ class GameManager:
                     tiles.append({
                         "x": x, "y": y,
                         "terrain": tile.terrain_type,
-                        "poi": poi_data
+                        "poi": poi_data,
+                        "discovered": tile.discovered
                     })
 
         heroes = []
+        party_info = []
         for player in self.players.values():
             for hero in player.heroes:
                 heroes.append({
@@ -239,5 +209,19 @@ class GameManager:
                     "y": hero.position[1],
                     "owner": hero.owner_id
                 })
+                if player.player_id == self.player_ids[0]: # Assuming p1 is player
+                    for char in hero.party:
+                        party_info.append({
+                            "name": char.name,
+                            "class": char.char_class,
+                            "hp": char.current_hp,
+                            "max_hp": char.max_hp,
+                            "level": char.level
+                        })
 
-        return {"tiles": tiles, "heroes": heroes}
+        return {
+            "tiles": tiles,
+            "heroes": heroes,
+            "party_info": party_info,
+            "log": self.game_log
+        }

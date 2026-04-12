@@ -7,6 +7,8 @@ from engine.manager import GameManager
 from engine.graphics import Renderer
 from engine.ai import BasicAI
 
+from engine.models import Character, Stats
+
 def create_game():
     # Define unit types
     swordsman = UnitType("Swordsman", 5, 5, 20, 3, 5, 4, {"gold": 100}, 10, 1)
@@ -26,19 +28,23 @@ def create_game():
     mine1 = POI("mine1", "mine", (5, 5), 1, income={"gold": 50})
     mine2 = POI("mine2", "mine", (10, 5), 1, income={"gold": 50})
     fort1 = POI("fort1", "fort", (10, 10), 2, garrison=[Stack(swordsman, 10)])
+    dungeon1 = POI("dungeon1", "dungeon", (7, 7), 3, garrison=[Stack(swordsman, 5), Stack(archer, 5)])
 
     game_map.set_poi(town1)
     game_map.set_poi(mine1)
     game_map.set_poi(mine2)
     game_map.set_poi(fort1)
+    game_map.set_poi(dungeon1)
 
     # Create players
     p1 = Player(1, "Player 1")
-    h1 = Hero("Hero 1", 1, position=(0, 0), army=[Stack(swordsman, 20), Stack(archer, 10)])
+    player_char = Character("Valeria", "Fighter", Stats(16, 12, 14, 10, 10, 10), max_hp=30, current_hp=30)
+    h1 = Hero("Party 1", 1, position=(0, 0), party=[player_char])
     p1.heroes.append(h1)
 
     p2 = Player(2, "AI Opponent")
-    h2 = Hero("Hero 2", 2, position=(14, 14), army=[Stack(swordsman, 15)])
+    ai_char = Character("Grok", "Orc", Stats(18, 10, 16, 8, 8, 8), max_hp=40, current_hp=40)
+    h2 = Hero("Enemy Party", 2, position=(14, 14), party=[ai_char])
     p2.heroes.append(h2)
 
     return GameManager(game_map, [p1, p2])

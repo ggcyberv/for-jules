@@ -9,6 +9,8 @@ class Tile:
     terrain_type: str = "plains"
     movement_cost: float = 1.0
     poi: Optional[POI] = None
+    notes: List[str] = field(default_factory=list)
+    discovered: bool = False
 
 class GameMap:
     def __init__(self, width: int, height: int):
@@ -29,6 +31,16 @@ class GameMap:
         tile = self.get_tile(x, y)
         if tile:
             tile.poi = poi
+
+    def discover_area(self, x: int, y: int, radius: int):
+        for dx in range(-radius, radius + 1):
+            for dy in range(-radius, radius + 1):
+                # Simple distance check for hex-like radius (Manhattan in axial would be better but this is fine for now)
+                dist = max(abs(dx), abs(dy), abs(dx + dy))
+                if dist <= radius:
+                    tile = self.get_tile(x + dx, y + dy)
+                    if tile:
+                        tile.discovered = True
 
     def get_neighbors(self, x: int, y: int) -> List[Tuple[int, int]]:
         """
