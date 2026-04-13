@@ -17,14 +17,6 @@ class ScryfallClient:
 
     def autocomplete(self, query: str) -> List[str]:
         self._rate_limit()
-        # The /cards/autocomplete endpoint is English-focused.
-        # For German support, we can use the /cards/search endpoint with the `lang` filter
-        # or just rely on English autocomplete for simplicity if Scryfall's autocomplete is sufficient.
-        # Actually, Scryfall's search API is better for multi-language support.
-        # Let's try to support both. Scryfall's autocomplete doesn't support lang.
-        # We can use /cards/search?q=name:/query/ or lang:de name:/query/
-
-        # Simple English autocomplete first
         params = {"q": query}
         response = requests.get(f"{SCRYFALL_API_URL}/cards/autocomplete", params=params)
         if response.status_code == 200:
@@ -33,7 +25,6 @@ class ScryfallClient:
 
     def search_cards(self, query: str, lang: Optional[str] = None) -> List[Dict]:
         self._rate_limit()
-        # Example: q=name:"Grizzly Bears" lang:de
         q = f"name:\"{query}\"" if " " in query else query
         if lang:
             q += f" lang:{lang}"
@@ -44,18 +35,8 @@ class ScryfallClient:
             return response.json().get("data", [])
         return []
 
-    def get_card_by_name(self, name: str) -> Optional[Dict]:
-        self._rate_limit()
-        params = {"exact": name}
-        response = requests.get(f"{SCRYFALL_API_URL}/cards/named", params=params)
-        if response.status_code == 200:
-            return response.json()
-        return None
-
     def get_card_details(self, oracle_id: str) -> Optional[Dict]:
         self._rate_limit()
-        # Search for the newest regular printing
-        # q=oracle_id:id -is:digital (order by released, dir desc)
         params = {
             "q": f"oracle_id:{oracle_id} -is:digital",
             "order": "released",
@@ -70,10 +51,8 @@ class ScryfallClient:
 
     def get_cheapest_price(self, oracle_id: str) -> float:
         self._rate_limit()
-        # Find the cheapest printing (non-foil, cardmarket price preferred as requested)
         params = {
             "q": f"oracle_id:{oracle_id}",
-            "order": "usd", # Scryfall doesn't have "order by eur" directly in simple way but we can fetch all and compare
         }
         response = requests.get(f"{SCRYFALL_API_URL}/cards/search", params=params)
         if response.status_code == 200:
