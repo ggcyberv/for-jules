@@ -291,7 +291,7 @@ const DecksView = ({ decks, selectedDeck, setSelectedDeck, refresh }: { decks: D
                 <div>
                     <h1 className="text-3xl font-bold mb-8 text-white">My Decks</h1>
                     <div className="flex gap-4 mb-8">
-                        <input type="text" value={newDeckName} onChange={(e) => setNewDeckName(e.target.value)} placeholder="New deck name..." className="bg-slate-800 border border-slate-700 rounded-lg px-4 py-2 focus:outline-none text-white" />
+                        <input type="text" value={newDeckName} onChange={(e) => setNewDeckName(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && createDeck()} placeholder="New deck name..." className="bg-slate-800 border border-slate-700 rounded-lg px-4 py-2 focus:outline-none text-white" />
                         <button onClick={createDeck} className="bg-indigo-600 hover:bg-indigo-500 px-6 py-2 rounded-lg flex items-center gap-2 transition text-white"><Plus size={20} /> Create Deck</button>
                     </div>
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -311,7 +311,7 @@ const DecksView = ({ decks, selectedDeck, setSelectedDeck, refresh }: { decks: D
                         <div className="flex gap-2">
                             <select value={category} onChange={e => setCategory(e.target.value)} className="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm focus:outline-none"><option value="Main">Mainboard</option><option value="Considering">Considering</option><option value="History">History</option></select>
                             <div className="relative">
-                                <input type="text" value={cardSearch} onChange={handleCardSearchChange} placeholder="Add card..." className="bg-slate-800 border border-slate-700 rounded-lg px-4 py-2 focus:outline-none text-white" />
+                                <input type="text" value={cardSearch} onChange={handleCardSearchChange} onKeyDown={(e) => e.key === 'Enter' && addCardToDeck(cardSearch)} placeholder="Add card..." className="bg-slate-800 border border-slate-700 rounded-lg px-4 py-2 focus:outline-none text-white" />
                                 {cardSuggestions.length > 0 && (<div className="absolute w-full mt-2 bg-slate-800 border border-slate-700 rounded-lg shadow-2xl z-50 overflow-hidden">{cardSuggestions.map((s, i) => (<button key={i} onClick={() => addCardToDeck(s)} className="w-full text-left px-4 py-2 hover:bg-indigo-600 text-sm border-b border-slate-700 last:border-0 text-white">{s}</button>))}</div>)}
                             </div>
                         </div>
