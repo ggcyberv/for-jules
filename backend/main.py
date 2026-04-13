@@ -5,7 +5,10 @@ from typing import List, Optional, Dict
 import datetime
 from pydantic import BaseModel
 
-from . import models, scryfall_client
+try:
+    from . import models, scryfall_client
+except ImportError:
+    import models, scryfall_client
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
