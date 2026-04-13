@@ -3,6 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 from typing import List, Optional, Dict
 import datetime
+from pydantic import BaseModel
 
 from . import models, scryfall_client
 from sqlalchemy import create_engine
@@ -23,6 +24,29 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Pydantic models for request bodies
+class CardAdd(BaseModel):
+    oracle_id: str
+    name: str
+
+class CardRemove(BaseModel):
+    oracle_id: str
+
+class TagAdd(BaseModel):
+    tag_name: str
+
+class DeckCreate(BaseModel):
+    name: str
+    description: Optional[str] = None
+
+class DeckCardAdd(BaseModel):
+    oracle_id: str
+    category: str = "Main"
+
+class DeckCardRemove(BaseModel):
+    oracle_id: str
+    category: str
 
 def get_db():
     db = SessionLocal()
@@ -93,18 +117,18 @@ def get_collection(
     return result
 
 @app.post("/collection/add")
-def add_to_collection(oracle_id: str = Body(...), name: str = Body(...), db: Session = Depends(get_db)):
-    card = db.query(models.CollectionCard).filter(models.CollectionCard.oracle_id == oracle_id).first()
+def add_to_collection(card_in: CardAdd, db: Session = Depends(get_db)):
+    card = db.query(models.CollectionCard).filter(models.CollectionCard.oracle_id == card_in.oracle_id).first()
     if card:
         card.quantity += 1
     else:
-        details = client.get_card_details(oracle_id)
+        details = client.get_card_details(card_in.oracle_id)
         if not details:
             raise HTTPException(status_code=404, detail="Scryfall data not found")
-        price = client.get_cheapest_price(oracle_id)
+        price = client.get_cheapest_price(card_in.oracle_id)
         card = models.CollectionCard(
-            oracle_id=oracle_id,
-            name=name,
+            oracle_id=card_in.oracle_id,
+            name=card_in.name,
             quantity=1,
             type_line=details.get("type_line"),
             mana_cost=details.get("mana_cost"),
@@ -121,8 +145,8 @@ def add_to_collection(oracle_id: str = Body(...), name: str = Body(...), db: Ses
     return {"status": "success", "quantity": card.quantity}
 
 @app.post("/collection/remove")
-def remove_from_collection(oracle_id: str = Body(...), db: Session = Depends(get_db)):
-    card = db.query(models.CollectionCard).filter(models.CollectionCard.oracle_id == oracle_id).first()
+def remove_from_collection(card_in: CardRemove, db: Session = Depends(get_db)):
+    card = db.query(models.CollectionCard).filter(models.CollectionCard.oracle_id == card_in.oracle_id).first()
     if card:
         if card.quantity > 1:
             card.quantity -= 1
@@ -133,13 +157,13 @@ def remove_from_collection(oracle_id: str = Body(...), db: Session = Depends(get
     raise HTTPException(status_code=404, detail="Not found")
 
 @app.post("/collection/{oracle_id}/tags")
-def add_tag(oracle_id: str, tag_name: str = Body(embed=True), db: Session = Depends(get_db)):
+def add_tag(oracle_id: str, tag_in: TagAdd, db: Session = Depends(get_db)):
     card = db.query(models.CollectionCard).filter(models.CollectionCard.oracle_id == oracle_id).first()
     if not card:
         raise HTTPException(status_code=404, detail="Card not found")
-    tag = db.query(models.Tag).filter(models.Tag.name == tag_name).first()
+    tag = db.query(models.Tag).filter(models.Tag.name == tag_in.tag_name).first()
     if not tag:
-        tag = models.Tag(name=tag_name)
+        tag = models.Tag(name=tag_in.tag_name)
         db.add(tag)
         db.flush()
     if tag not in card.tags:
@@ -163,8 +187,8 @@ def get_decks(db: Session = Depends(get_db)):
     return db.query(models.Deck).all()
 
 @app.post("/decks")
-def create_deck(name: str = Body(...), description: Optional[str] = Body(None), db: Session = Depends(get_db)):
-    deck = models.Deck(name=name, description=description)
+def create_deck(deck_in: DeckCreate, db: Session = Depends(get_db)):
+    deck = models.Deck(name=deck_in.name, description=deck_in.description)
     db.add(deck)
     db.commit()
     db.refresh(deck)
@@ -194,20 +218,20 @@ def get_deck(deck_id: int, db: Session = Depends(get_db)):
     return {"id": deck.id, "name": deck.name, "description": deck.description, "cards": cards}
 
 @app.post("/decks/{deck_id}/add")
-def add_card_to_deck(deck_id: int, oracle_id: str = Body(...), category: str = Body("Main"), db: Session = Depends(get_db)):
-    card = db.query(models.CollectionCard).filter(models.CollectionCard.oracle_id == oracle_id).first()
+def add_card_to_deck(deck_id: int, card_in: DeckCardAdd, db: Session = Depends(get_db)):
+    card = db.query(models.CollectionCard).filter(models.CollectionCard.oracle_id == card_in.oracle_id).first()
     if not card: raise HTTPException(status_code=404, detail="Add to collection first")
-    deck_card = db.query(models.DeckCard).filter(models.DeckCard.deck_id == deck_id, models.DeckCard.oracle_id == oracle_id, models.DeckCard.category == category).first()
+    deck_card = db.query(models.DeckCard).filter(models.DeckCard.deck_id == deck_id, models.DeckCard.oracle_id == card_in.oracle_id, models.DeckCard.category == card_in.category).first()
     if deck_card: deck_card.quantity += 1
     else:
-        deck_card = models.DeckCard(deck_id=deck_id, oracle_id=oracle_id, quantity=1, category=category)
+        deck_card = models.DeckCard(deck_id=deck_id, oracle_id=card_in.oracle_id, quantity=1, category=card_in.category)
         db.add(deck_card)
     db.commit()
     return {"status": "success"}
 
 @app.post("/decks/{deck_id}/remove")
-def remove_card_from_deck(deck_id: int, oracle_id: str = Body(...), category: str = Body(...), db: Session = Depends(get_db)):
-    deck_card = db.query(models.DeckCard).filter(models.DeckCard.deck_id == deck_id, models.DeckCard.oracle_id == oracle_id, models.DeckCard.category == category).first()
+def remove_card_from_deck(deck_id: int, card_in: DeckCardRemove, db: Session = Depends(get_db)):
+    deck_card = db.query(models.DeckCard).filter(models.DeckCard.deck_id == deck_id, models.DeckCard.oracle_id == card_in.oracle_id, models.DeckCard.category == card_in.category).first()
     if deck_card:
         if deck_card.quantity > 1: deck_card.quantity -= 1
         else: db.delete(deck_card)
