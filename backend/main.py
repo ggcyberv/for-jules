@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session
 from typing import List, Optional, Dict
 import datetime
 from pydantic import BaseModel
+import re
 
 try:
     from . import models, scryfall_client
@@ -42,6 +43,13 @@ class TagAdd(BaseModel):
 class DeckCreate(BaseModel):
     name: str
     description: Optional[str] = None
+
+class DeckRename(BaseModel):
+    name: str
+
+class BulkImport(BaseModel):
+    deck_id: Optional[int] = None
+    list_text: str
 
 class DeckCardAdd(BaseModel):
     oracle_id: str
@@ -93,8 +101,8 @@ def search_cards(q: str, lang: Optional[str] = None, exact: bool = False, db: Se
 @app.get("/collection")
 def get_collection(
     db: Session = Depends(get_db),
-    colors: Optional[str] = None, # Comma-separated list of colors on the card
-    color_identity: Optional[str] = None, # Comma-separated list for color ID
+    colors: Optional[str] = None,
+    color_identity: Optional[str] = None,
     type: Optional[str] = None,
     format: Optional[str] = None,
     keyword: Optional[str] = None,
@@ -113,35 +121,23 @@ def get_collection(
     if max_price is not None:
         query = query.filter(models.CollectionCard.price_eur <= max_price)
 
-    # To correctly handle pagination with complex filters, we filter then slice
     all_cards = query.all()
     filtered_cards = []
     for card in all_cards:
         if colors:
             target_colors = set(c.upper() for c in colors.split(","))
             card_colors = set(card.colors or [])
-            if not card_colors.issubset(target_colors):
-                continue
-
+            if not card_colors.issubset(target_colors): continue
         if color_identity:
             target_id = set(c.upper() for c in color_identity.split(","))
             card_id = set(card.color_identity or [])
-            if not card_id.issubset(target_id):
-                continue
-
+            if not card_id.issubset(target_id): continue
         if tag:
-            card_tags = [t.name.lower() for t in card.tags]
-            if tag.lower() not in card_tags:
-                continue
-
-        if keyword and keyword.lower() not in [k.lower() for k in (card.keywords or [])]:
-            continue
-        if format and (card.legalities or {}).get(format) != "legal":
-            continue
+            if tag.lower() not in [t.name.lower() for t in card.tags]: continue
+        if keyword and keyword.lower() not in [k.lower() for k in (card.keywords or [])]: continue
+        if format and (card.legalities or {}).get(format) != "legal": continue
         if set_code:
-            set_printings = client.search_cards(f"oracle_id:{card.oracle_id} set:{set_code}")
-            if not set_printings:
-                continue
+            if not client.search_cards(f"oracle_id:{card.oracle_id} set:{set_code}"): continue
 
         decks = [dc.deck.name for dc in card.deck_cards]
         filtered_cards.append({
@@ -152,6 +148,9 @@ def get_collection(
                 "type_line": card.type_line,
                 "mana_cost": card.mana_cost,
                 "oracle_text": card.oracle_text,
+                "power": card.power,
+                "toughness": card.toughness,
+                "loyalty": card.loyalty,
                 "image_uris": {"normal": card.image_url},
                 "prices": {"eur": str(card.price_eur)},
                 "color_identity": card.color_identity,
@@ -162,44 +161,36 @@ def get_collection(
             "tags": [t.name for t in card.tags]
         })
 
-    # Apply pagination on filtered list
     paginated = filtered_cards[offset:offset+limit]
-    return {
-        "items": paginated,
-        "total": len(filtered_cards),
-        "has_more": offset + limit < len(filtered_cards)
-    }
+    return {"items": paginated, "total": len(filtered_cards), "has_more": offset + limit < len(filtered_cards)}
 
-@app.post("/collection/add")
-def add_to_collection(card_in: CardAdd, db: Session = Depends(get_db)):
-    card = db.query(models.CollectionCard).filter(models.CollectionCard.oracle_id == card_in.oracle_id).first()
+def _add_to_collection_internal(oracle_id: str, name: str, db: Session, quantity: int = 1):
+    card = db.query(models.CollectionCard).filter(models.CollectionCard.oracle_id == oracle_id).first()
     if card:
-        card.quantity += 1
+        card.quantity += quantity
     else:
-        # get_card_details already returns the newest printing with prices
-        details = client.get_card_details(card_in.oracle_id)
-        if not details:
-            raise HTTPException(status_code=404, detail="Scryfall data not found")
-
+        details = client.get_card_details(oracle_id)
+        if not details: return None
         eur_price = details.get("prices", {}).get("eur")
         price = float(eur_price) if eur_price else 0.0
-
         card = models.CollectionCard(
-            oracle_id=card_in.oracle_id,
-            name=card_in.name,
-            quantity=1,
-            type_line=details.get("type_line"),
-            mana_cost=details.get("mana_cost"),
-            cmc=details.get("cmc"),
-            oracle_text=details.get("oracle_text"),
-            colors=details.get("colors"),
+            oracle_id=oracle_id, name=name, quantity=quantity,
+            type_line=details.get("type_line"), mana_cost=details.get("mana_cost"),
+            cmc=details.get("cmc"), oracle_text=details.get("oracle_text"),
+            power=details.get("power"), toughness=details.get("toughness"),
+            loyalty=details.get("loyalty"), colors=details.get("colors"),
             color_identity=details.get("color_identity"),
             image_url=details.get("image_uris", {}).get("normal"),
-            price_eur=price,
-            legalities=details.get("legalities"),
+            price_eur=price, legalities=details.get("legalities"),
             keywords=details.get("keywords")
         )
         db.add(card)
+    return card
+
+@app.post("/collection/add")
+def add_to_collection(card_in: CardAdd, db: Session = Depends(get_db)):
+    card = _add_to_collection_internal(card_in.oracle_id, card_in.name, db)
+    if not card: raise HTTPException(status_code=404)
     db.commit()
     return {"status": "success", "quantity": card.quantity}
 
@@ -207,39 +198,55 @@ def add_to_collection(card_in: CardAdd, db: Session = Depends(get_db)):
 def remove_from_collection(card_in: CardRemove, db: Session = Depends(get_db)):
     card = db.query(models.CollectionCard).filter(models.CollectionCard.oracle_id == card_in.oracle_id).first()
     if card:
-        if card.quantity > 1:
-            card.quantity -= 1
-        else:
-            db.delete(card)
+        if card.quantity > 1: card.quantity -= 1
+        else: db.delete(card)
         db.commit()
         return {"status": "success"}
-    raise HTTPException(status_code=404, detail="Not found")
+    raise HTTPException(status_code=404)
+
+@app.post("/bulk_import")
+def bulk_import(import_in: BulkImport, db: Session = Depends(get_db)):
+    lines = import_in.list_text.strip().split('\n')
+    added_count = 0
+    for line in lines:
+        match = re.match(r'^(\d+)x?\s+(.+)$', line.strip())
+        if match:
+            qty, name = int(match.group(1)), match.group(2).strip()
+            search_res = client.search_cards(name, exact=True) or client.search_cards(name)
+            if search_res:
+                card_data = search_res[0]
+                oracle_id, real_name = card_data['oracle_id'], card_data['name']
+                _add_to_collection_internal(oracle_id, real_name, db, qty)
+                if import_in.deck_id:
+                    deck_card = db.query(models.DeckCard).filter(models.DeckCard.deck_id == import_in.deck_id, models.DeckCard.oracle_id == oracle_id, models.DeckCard.category == "Main").first()
+                    if deck_card: deck_card.quantity += qty
+                    else: db.add(models.DeckCard(deck_id=import_in.deck_id, oracle_id=oracle_id, quantity=qty, category="Main"))
+                added_count += 1
+    db.commit()
+    return {"status": "success", "added": added_count}
 
 @app.post("/collection/{oracle_id}/tags")
 def add_tag(oracle_id: str, tag_in: TagAdd, db: Session = Depends(get_db)):
     card = db.query(models.CollectionCard).filter(models.CollectionCard.oracle_id == oracle_id).first()
-    if not card:
-        raise HTTPException(status_code=404, detail="Card not found")
+    if not card: raise HTTPException(status_code=404)
     tag = db.query(models.Tag).filter(models.Tag.name == tag_in.tag_name).first()
     if not tag:
         tag = models.Tag(name=tag_in.tag_name)
-        db.add(tag)
-        db.flush()
-    if tag not in card.tags:
-        card.tags.append(tag)
-        db.commit()
+        db.add(tag); db.flush()
+    if tag not in card.tags: card.tags.append(tag); db.commit()
     return {"status": "success"}
 
 @app.delete("/collection/{oracle_id}/tags/{tag_name}")
 def remove_tag(oracle_id: str, tag_name: str, db: Session = Depends(get_db)):
     card = db.query(models.CollectionCard).filter(models.CollectionCard.oracle_id == oracle_id).first()
-    if not card:
-        raise HTTPException(status_code=404, detail="Card not found")
+    if not card: raise HTTPException(status_code=404)
     tag = db.query(models.Tag).filter(models.Tag.name == tag_name).first()
-    if tag and tag in card.tags:
-        card.tags.remove(tag)
-        db.commit()
+    if tag and tag in card.tags: card.tags.remove(tag); db.commit()
     return {"status": "success"}
+
+@app.get("/tags")
+def get_tags(db: Session = Depends(get_db)):
+    return [t.name for t in db.query(models.Tag).all()]
 
 @app.get("/decks")
 def get_decks(db: Session = Depends(get_db)):
@@ -248,34 +255,49 @@ def get_decks(db: Session = Depends(get_db)):
 @app.post("/decks")
 def create_deck(deck_in: DeckCreate, db: Session = Depends(get_db)):
     deck = models.Deck(name=deck_in.name, description=deck_in.description)
-    db.add(deck)
+    db.add(deck); db.commit(); db.refresh(deck)
+    return deck
+
+@app.delete("/decks/{deck_id}")
+def delete_deck(deck_id: int, db: Session = Depends(get_db)):
+    deck = db.query(models.Deck).filter(models.Deck.id == deck_id).first()
+    if not deck: raise HTTPException(status_code=404)
+    db.query(models.DeckCard).filter(models.DeckCard.deck_id == deck_id).delete()
+    db.delete(deck); db.commit()
+    return {"status": "success"}
+
+@app.patch("/decks/{deck_id}")
+def rename_deck(deck_id: int, rename_in: DeckRename, db: Session = Depends(get_db)):
+    deck = db.query(models.Deck).filter(models.Deck.id == deck_id).first()
+    if not deck: raise HTTPException(status_code=404)
+    deck.name = rename_in.name
     db.commit()
     db.refresh(deck)
     return deck
 
-@app.get("/tags")
-def get_tags(db: Session = Depends(get_db)):
-    tags = db.query(models.Tag).all()
-    return [t.name for t in tags]
+@app.post("/decks/{deck_id}/clone")
+def clone_deck(deck_id: int, db: Session = Depends(get_db)):
+    original = db.query(models.Deck).filter(models.Deck.id == deck_id).first()
+    if not original: raise HTTPException(status_code=404)
+    cloned = models.Deck(name=f"Copy of {original.name}", description=original.description)
+    db.add(cloned); db.flush()
+    for card in original.cards:
+        db.add(models.DeckCard(deck_id=cloned.id, oracle_id=card.oracle_id, quantity=card.quantity, category=card.category))
+    db.commit(); db.refresh(cloned)
+    return cloned
 
 @app.get("/decks/{deck_id}")
 def get_deck(deck_id: int, db: Session = Depends(get_db)):
     deck = db.query(models.Deck).filter(models.Deck.id == deck_id).first()
-    if not deck:
-        raise HTTPException(status_code=404, detail="Not found")
+    if not deck: raise HTTPException(status_code=404)
     cards = []
     for dc in deck.cards:
         cards.append({
-            "oracle_id": dc.oracle_id,
-            "name": dc.card.name,
-            "quantity": dc.quantity,
-            "category": dc.category,
+            "oracle_id": dc.oracle_id, "name": dc.card.name, "quantity": dc.quantity, "category": dc.category,
             "details": {
-                "type_line": dc.card.type_line,
-                "mana_cost": dc.card.mana_cost,
-                "oracle_text": dc.card.oracle_text,
-                "image_uris": {"normal": dc.card.image_url},
-                "prices": {"eur": str(dc.card.price_eur)},
+                "type_line": dc.card.type_line, "mana_cost": dc.card.mana_cost, "oracle_text": dc.card.oracle_text,
+                "power": dc.card.power, "toughness": dc.card.toughness, "loyalty": dc.card.loyalty,
+                "image_uris": {"normal": dc.card.image_url}, "prices": {"eur": str(dc.card.price_eur)},
                 "color_identity": dc.card.color_identity
             }
         })
@@ -284,32 +306,28 @@ def get_deck(deck_id: int, db: Session = Depends(get_db)):
 @app.post("/decks/{deck_id}/add")
 def add_card_to_deck(deck_id: int, card_in: DeckCardAdd, db: Session = Depends(get_db)):
     card = db.query(models.CollectionCard).filter(models.CollectionCard.oracle_id == card_in.oracle_id).first()
-    if not card: raise HTTPException(status_code=404, detail="Add to collection first")
-    deck_card = db.query(models.DeckCard).filter(models.DeckCard.deck_id == deck_id, models.DeckCard.oracle_id == card_in.oracle_id, models.DeckCard.category == card_in.category).first()
-    if deck_card: deck_card.quantity += 1
-    else:
-        deck_card = models.DeckCard(deck_id=deck_id, oracle_id=card_in.oracle_id, quantity=1, category=card_in.category)
-        db.add(deck_card)
+    if not card: raise HTTPException(status_code=404)
+    dc = db.query(models.DeckCard).filter(models.DeckCard.deck_id == deck_id, models.DeckCard.oracle_id == card_in.oracle_id, models.DeckCard.category == card_in.category).first()
+    if dc: dc.quantity += 1
+    else: db.add(models.DeckCard(deck_id=deck_id, oracle_id=card_in.oracle_id, quantity=1, category=card_in.category))
     db.commit()
     return {"status": "success"}
 
 @app.post("/decks/{deck_id}/remove")
 def remove_card_from_deck(deck_id: int, card_in: DeckCardRemove, db: Session = Depends(get_db)):
-    deck_card = db.query(models.DeckCard).filter(models.DeckCard.deck_id == deck_id, models.DeckCard.oracle_id == card_in.oracle_id, models.DeckCard.category == card_in.category).first()
-    if deck_card:
-        if deck_card.quantity > 1: deck_card.quantity -= 1
-        else: db.delete(deck_card)
-        db.commit()
-        return {"status": "success"}
+    dc = db.query(models.DeckCard).filter(models.DeckCard.deck_id == deck_id, models.DeckCard.oracle_id == card_in.oracle_id, models.DeckCard.category == card_in.category).first()
+    if dc:
+        if dc.quantity > 1: dc.quantity -= 1
+        else: db.delete(dc)
+        db.commit(); return {"status": "success"}
     raise HTTPException(status_code=404)
 
 @app.get("/stats/value")
 def get_collection_value(db: Session = Depends(get_db)):
     cards = db.query(models.CollectionCard).all()
     total_value = sum((card.price_eur or 0) * card.quantity for card in cards if (card.price_eur or 0) > 1.0)
-    last_history = db.query(models.ValueHistory).order_by(models.ValueHistory.timestamp.desc()).first()
-    if not last_history or (datetime.datetime.utcnow() - last_history.timestamp).total_seconds() > 3600:
-        db.add(models.ValueHistory(total_value=total_value))
-        db.commit()
-    history_data = db.query(models.ValueHistory).order_by(models.ValueHistory.timestamp).all()
-    return {"total_value": total_value, "history": [{"timestamp": h.timestamp, "value": h.total_value} for h in history_data]}
+    last = db.query(models.ValueHistory).order_by(models.ValueHistory.timestamp.desc()).first()
+    if not last or (datetime.datetime.utcnow() - last.timestamp).total_seconds() > 3600:
+        db.add(models.ValueHistory(total_value=total_value)); db.commit()
+    history = db.query(models.ValueHistory).order_by(models.ValueHistory.timestamp).all()
+    return {"total_value": total_value, "history": [{"timestamp": h.timestamp, "value": h.total_value} for h in history]}

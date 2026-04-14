@@ -1,0 +1,28 @@
+INFO:     Started server process [1715854]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://0.0.0.0:8000 (Press CTRL+C to quit)
+
+> frontend@0.0.0 dev
+> vite
+
+[vite:react-swc] We recommend switching to `@vitejs/plugin-react` for improved performance as no swc plugins are used. More information at https://vite.dev/rolldown
+
+  VITE v8.0.8  ready in 463 ms
+
+  ➜  Local:   http://localhost:5173/
+  ➜  Network: use --host to expose
+========================================
+   MTG Collection App - Unified Startup
+========================================
+[Backend] Starting FastAPI server...
+
+----------------------------------------
+   App is starting up!
+   Backend: http://localhost:8000
+   Frontend: http://localhost:5173
+----------------------------------------
+
+[Frontend] Starting Vite development server...
+INFO:     127.0.0.1:57372 - "POST /decks HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57378 - "PATCH /decks/1 HTTP/1.1" 200 OK

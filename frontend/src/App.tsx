@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Search, Library, ScrollText, BarChart3, Plus, Eye, Type as TypeIcon, ChevronRight, Filter, Minus, Tag as TagIcon, X } from 'lucide-react';
+import { Search, Library, ScrollText, BarChart3, Plus, Eye, Type as TypeIcon, ChevronRight, Filter, Minus, Tag as TagIcon, X, List, Copy, Trash2, Edit2, Upload } from 'lucide-react';
 import axios from 'axios';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 
@@ -53,6 +53,126 @@ interface Stats {
   total_value: number;
   history: ValueHistoryEntry[];
 }
+
+const CardDisplay = ({ card, mode, onAdd, onRemove, onAddTag, onRemoveTag, deckAction, setDeckAction, decks, onAddToDeck, onRemoveFromDeck, category }: {
+    card: any,
+    mode: 'image' | 'text' | 'list',
+    onAdd?: (name: string) => void,
+    onRemove?: (id: string) => void,
+    onAddTag?: (id: string) => void,
+    onRemoveTag?: (id: string, tag: string) => void,
+    deckAction?: any,
+    setDeckAction?: any,
+    decks?: Deck[],
+    onAddToDeck?: (id: string) => void,
+    onRemoveFromDeck?: (id: string, cat: string) => void,
+    category?: string
+}) => {
+    if (mode === 'list') {
+        return (
+            <div className="flex justify-between items-center bg-slate-800/50 p-2 rounded border border-slate-700 hover:border-slate-500 transition group h-10">
+                <div className="flex items-center gap-3 overflow-hidden">
+                    <span className="text-indigo-400 font-bold text-xs shrink-0">{card.quantity}x</span>
+                    <span className="font-medium text-xs text-white truncate">{card.name}</span>
+                </div>
+                <div className="flex items-center gap-2 shrink-0">
+                    <span className="text-slate-500 font-mono text-[10px]">{card.details.mana_cost}</span>
+                    {onRemoveFromDeck && <button onClick={() => onRemoveFromDeck(card.oracle_id, category!)} className="text-slate-600 hover:text-rose-500 opacity-0 group-hover:opacity-100 transition"><X size={12} /></button>}
+                </div>
+            </div>
+        );
+    }
+
+    if (mode === 'text') {
+        return (
+            <div className="bg-slate-800 rounded-xl p-4 border border-slate-700 shadow-lg hover:border-indigo-500 transition flex flex-col gap-3 min-h-[160px]">
+                <div className="flex justify-between items-start">
+                    <div className="flex-1">
+                        <div className="flex items-center gap-2">
+                            <h3 className="font-bold text-indigo-400 leading-tight">{card.name}</h3>
+                            <span className="text-slate-500 text-xs font-mono">{card.details.mana_cost}</span>
+                        </div>
+                        <div className="text-[10px] text-slate-500 uppercase font-bold mt-0.5">{card.details.type_line}</div>
+                    </div>
+                    <div className="text-right shrink-0">
+                        <div className="text-[10px] text-slate-500 uppercase">Qty</div>
+                        <div className="text-lg font-black text-white leading-none">{card.quantity}</div>
+                    </div>
+                </div>
+
+                <div className="text-xs text-slate-300 line-clamp-3 bg-slate-900/50 p-2 rounded italic border border-slate-700/30 flex-1">
+                    {card.details.oracle_text || 'No functional text.'}
+                </div>
+
+                <div className="flex justify-between items-end">
+                    <div className="flex gap-1 flex-wrap">
+                        {card.tags?.map((t: string) => <span key={t} className="text-[9px] bg-slate-700 px-1.5 py-0.5 rounded flex items-center gap-1">{t} {onRemoveTag && <X size={8} className="cursor-pointer" onClick={() => onRemoveTag(card.oracle_id, t)} />}</span>)}
+                        {card.decks?.map((d: string) => <span key={d} className="text-[9px] bg-indigo-900/50 text-indigo-300 px-1.5 py-0.5 rounded border border-indigo-500/30">D: {d}</span>)}
+                    </div>
+                    <div className="text-right">
+                        {card.details.power && <div className="text-xs font-bold text-white bg-slate-700 px-2 py-0.5 rounded border border-slate-600">{card.details.power}/{card.details.toughness}</div>}
+                        {card.details.loyalty && <div className="text-xs font-bold text-orange-400 bg-orange-950/30 px-2 py-0.5 rounded border border-orange-900/50">[{card.details.loyalty}]</div>}
+                    </div>
+                </div>
+
+                {onAdd && (
+                    <div className="flex gap-2 pt-2 border-t border-slate-700/30">
+                        <div className="flex-1 flex gap-1">
+                            <select
+                                value={deckAction?.[card.oracle_id]?.deckId || ''}
+                                onChange={e => setDeckAction({ ...deckAction, [card.oracle_id]: { deckId: parseInt(e.target.value), category: deckAction?.[card.oracle_id]?.category || 'Main' } })}
+                                className="flex-1 bg-slate-900 border border-slate-700 rounded px-1 py-1 text-[9px] text-white outline-none"
+                            >
+                                <option value="">Add to Deck...</option>
+                                {decks?.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
+                            </select>
+                            <button onClick={() => onAddToDeck?.(card.oracle_id)} className="bg-indigo-600 p-1 rounded text-white"><Plus size={12} /></button>
+                        </div>
+                        <div className="flex gap-1">
+                            <button onClick={() => onRemove?.(card.oracle_id)} className="text-slate-500 hover:text-rose-500"><Minus size={14} /></button>
+                            <button onClick={() => onAdd?.(card.name)} className="text-slate-500 hover:text-indigo-400"><Plus size={14} /></button>
+                        </div>
+                    </div>
+                )}
+                {onRemoveFromDeck && <button onClick={() => onRemoveFromDeck(card.oracle_id, category!)} className="mt-auto w-full text-[10px] text-slate-500 hover:text-rose-500 border border-slate-700 rounded py-1 transition">Remove from {category}</button>}
+            </div>
+        );
+    }
+
+    return (
+        <div className="bg-slate-800 rounded-xl overflow-hidden border border-slate-700 shadow-lg group transition hover:border-indigo-500 flex flex-col">
+            <div className="relative aspect-[1/1.4]">
+                <img src={card.details.image_uris?.normal} alt={card.name} className="w-full h-full object-cover" />
+                {card.decks?.length > 0 && (
+                    <div className="absolute top-2 left-2 flex flex-wrap gap-1 max-w-[80%] pointer-events-none">
+                        {card.decks.map((d: string) => <span key={d} className="bg-indigo-600 text-white text-[8px] font-bold px-1.5 py-0.5 rounded shadow-lg border border-indigo-400 uppercase">In: {d}</span>)}
+                    </div>
+                )}
+                <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition flex flex-col justify-end p-4">
+                    <div className="flex justify-between items-center text-white">
+                        <span className="font-bold">Qty: {card.quantity}</span>
+                        <div className="flex gap-2">
+                            {onRemove && <button onClick={() => onRemove(card.oracle_id)} className="bg-rose-600 p-2 rounded-lg hover:bg-rose-500"><Minus size={16} /></button>}
+                            {onAdd && <button onClick={() => onAdd(card.name)} className="bg-indigo-600 p-2 rounded-lg hover:bg-indigo-500"><Plus size={16} /></button>}
+                            {onRemoveFromDeck && <button onClick={() => onRemoveFromDeck(card.oracle_id, category!)} className="bg-rose-600 p-2 rounded-lg hover:bg-rose-500"><X size={16} /></button>}
+                        </div>
+                    </div>
+                </div>
+            </div>
+            {onAddTag && (
+                <div className="p-2 border-t border-slate-700/50 flex gap-2 items-center bg-slate-900/30">
+                    <input
+                        type="text"
+                        placeholder="Tag..."
+                        className="flex-1 bg-slate-900 border border-slate-700 rounded px-2 py-0.5 text-[10px] text-white outline-none focus:border-indigo-500"
+                        onKeyDown={e => { if(e.key === 'Enter') { onAddTag(card.oracle_id); (e.target as HTMLInputElement).value = ''; } }}
+                    />
+                    <TagIcon size={12} className="text-slate-600" />
+                </div>
+            )}
+        </div>
+    );
+};
 
 const App = () => {
   const [activeTab, setActiveTab] = useState('collection');
@@ -132,12 +252,14 @@ const App = () => {
 const CollectionView = ({ collection, refresh, decks, hasMore, loadMore }: { collection: CollectionItem[], refresh: (p?: any) => void, decks: Deck[], hasMore: boolean, loadMore: () => void }) => {
   const [search, setSearch] = useState('');
   const [suggestions, setSuggestions] = useState<string[]>([]);
-  const [displayMode, setDisplayMode] = useState<'image' | 'text'>('image');
+  const [displayMode, setDisplayMode] = useState<'image' | 'text' | 'list'>('image');
   const [filters, setFilters] = useState({ colors: [] as string[], colorIdentity: [] as string[], format: '', type: '', keyword: '', set_code: '', tag: '' });
   const [newTag, setNewTag] = useState<{ [key: string]: string }>({});
   const [deckAction, setDeckAction] = useState<{ [key: string]: { deckId: number, category: string } }>({});
   const [availableTags, setAvailableTags] = useState<string[]>([]);
   const [searchTimeout, setSearchTimeout] = useState<any>(null);
+  const [importText, setImportText] = useState('');
+  const [showImport, setShowImport] = useState(false);
 
   useEffect(() => {
     fetchTags();
@@ -228,16 +350,43 @@ const CollectionView = ({ collection, refresh, decks, hasMore, loadMore }: { col
     refresh(params);
   };
 
+  const handleImport = async () => {
+    await axios.post(`${API_BASE}/bulk_import`, { list_text: importText });
+    setImportText('');
+    setShowImport(false);
+    refresh();
+  };
+
   return (
     <div className="flex flex-col h-full">
       <div className="p-8 border-b border-slate-800 shrink-0">
         <div className="flex justify-between items-center mb-8">
             <h1 className="text-3xl font-bold">My Collection</h1>
-            <button onClick={() => setDisplayMode(displayMode === 'image' ? 'text' : 'image')} className="flex items-center gap-2 bg-slate-700 px-4 py-2 rounded-lg hover:bg-slate-600 transition">
-                {displayMode === 'image' ? <TypeIcon size={20} /> : <Eye size={20} />}
-                {displayMode === 'image' ? 'Text Mode' : 'Image Mode'}
-            </button>
+            <div className="flex gap-2">
+                <button onClick={() => setShowImport(!showImport)} className="flex items-center gap-2 bg-indigo-600 px-4 py-2 rounded-lg hover:bg-indigo-500 transition font-bold text-white"><Upload size={18} /> Bulk Import</button>
+                <div className="bg-slate-800 p-1 rounded-lg flex border border-slate-700">
+                    <button onClick={() => setDisplayMode('image')} className={`p-2 rounded ${displayMode === 'image' ? 'bg-indigo-600 text-white' : 'text-slate-500'}`}><Eye size={18} /></button>
+                    <button onClick={() => setDisplayMode('text')} className={`p-2 rounded ${displayMode === 'text' ? 'bg-indigo-600 text-white' : 'text-slate-500'}`}><TypeIcon size={18} /></button>
+                    <button onClick={() => setDisplayMode('list')} className={`p-2 rounded ${displayMode === 'list' ? 'bg-indigo-600 text-white' : 'text-slate-500'}`}><List size={18} /></button>
+                </div>
+            </div>
         </div>
+
+        {showImport && (
+            <div className="mb-8 bg-slate-800 p-6 rounded-xl border border-indigo-500/50 shadow-2xl">
+                <h3 className="text-lg font-bold mb-4 flex items-center gap-2"><Upload size={20} /> Bulk Import Cards</h3>
+                <textarea
+                    value={importText}
+                    onChange={e => setImportText(e.target.value)}
+                    placeholder="Example:&#10;4 Grizzly Bears&#10;1x Island"
+                    className="w-full h-40 bg-slate-900 border border-slate-700 rounded-lg p-4 text-sm text-white focus:outline-none focus:border-indigo-500 mb-4"
+                />
+                <div className="flex justify-end gap-3">
+                    <button onClick={() => setShowImport(false)} className="px-6 py-2 rounded-lg text-slate-400 hover:text-white transition">Cancel</button>
+                    <button onClick={handleImport} className="px-8 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg font-bold transition">Import to Collection</button>
+                </div>
+            </div>
+        )}
         <div className="flex gap-4 items-start flex-wrap">
             <div className="relative flex-1 min-w-[300px] max-w-2xl">
                 <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500" size={20} />
@@ -289,74 +438,21 @@ const CollectionView = ({ collection, refresh, decks, hasMore, loadMore }: { col
         </div>
       </div>
       <div className="flex-1 p-8 overflow-auto">
-        <div className={`grid ${displayMode === 'image' ? 'grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5' : 'grid-cols-1'} gap-6`}>
+        <div className={`grid ${displayMode === 'image' ? 'grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5' : (displayMode === 'text' ? 'grid-cols-1 md:grid-cols-2 lg:grid-cols-3' : 'grid-cols-1')} gap-6`}>
             {collection.map((card, idx) => (
-            <div key={`${card.oracle_id}-${idx}`} className="bg-slate-800 rounded-xl overflow-hidden border border-slate-700 shadow-lg group transition hover:border-indigo-500 flex flex-col">
-                {displayMode === 'image' ? (
-                <div className="relative aspect-[1/1.4]">
-                    <img src={card.details.image_uris?.normal} alt={card.name} className="w-full h-full object-cover" />
-                    <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition flex flex-col justify-end p-4">
-                        <div className="flex justify-between items-center text-white">
-                            <span className="font-bold">Qty: {card.quantity}</span>
-                            <div className="flex gap-2">
-                                <button onClick={() => removeCard(card.oracle_id)} className="bg-rose-600 p-2 rounded-lg hover:bg-rose-500"><Minus size={16} /></button>
-                                <button onClick={() => addCard(card.name)} className="bg-indigo-600 p-2 rounded-lg hover:bg-indigo-500"><Plus size={16} /></button>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-                ) : (
-                <div className="p-6 flex justify-between items-center text-white">
-                    <div className="flex-1">
-                        <div className="flex items-center gap-3"><h3 className="text-xl font-bold text-indigo-400">{card.name}</h3><span className="text-slate-500 text-sm">{card.details.mana_cost}</span></div>
-                        <p className="text-slate-400 text-sm line-clamp-1">{card.details.oracle_text}</p>
-                        <div className="mt-2 flex gap-2 flex-wrap">
-                            {card.tags.map(t => <span key={t} className="text-[10px] bg-slate-700 px-2 py-0.5 rounded uppercase flex items-center gap-1">{t} <X size={10} className="cursor-pointer" onClick={() => removeTag(card.oracle_id, t)} /></span>)}
-                            {card.decks.map(d => <span key={d} className="text-[10px] bg-indigo-900 text-white font-bold px-2 py-0.5 rounded uppercase border border-indigo-400 shadow-sm">Deck: {d}</span>)}
-                            {card.details.keywords?.slice(0, 3).map(k => <span key={k} className="text-[10px] border border-slate-700 px-2 py-0.5 rounded uppercase text-slate-500">{k}</span>)}
-                        </div>
-                    </div>
-                    <div className="flex items-center gap-6 ml-8">
-                        <div className="text-right"><div className="text-xs text-slate-500 uppercase">Qty</div><div className="text-2xl font-bold">{card.quantity}</div></div>
-                        <div className="text-right w-24"><div className="text-xs text-slate-500 uppercase">Price</div><div className="text-lg font-bold text-emerald-400">€{parseFloat(card.details.prices?.eur || '0').toFixed(2)}</div></div>
-                        <div className="flex flex-col gap-1"><button onClick={() => addCard(card.name)} className="bg-slate-700 p-1 rounded hover:bg-slate-600"><Plus size={14} /></button><button onClick={() => removeCard(card.oracle_id)} className="bg-slate-700 p-1 rounded hover:bg-slate-600"><Minus size={14} /></button></div>
-                    </div>
-                </div>
-                )}
-                {/* Deck & Tag Actions */}
-                <div className="p-3 border-t border-slate-700/50 space-y-2">
-                    <div className="flex gap-1">
-                        <select
-                            value={deckAction[card.oracle_id]?.deckId || ''}
-                            onChange={e => setDeckAction({ ...deckAction, [card.oracle_id]: { deckId: parseInt(e.target.value), category: deckAction[card.oracle_id]?.category || 'Main' } })}
-                            className="flex-1 bg-slate-900 border border-slate-700 rounded px-1 py-1 text-[10px] text-white outline-none"
-                        >
-                            <option value="">Add to Deck...</option>
-                            {decks.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
-                        </select>
-                        <select
-                            value={deckAction[card.oracle_id]?.category || 'Main'}
-                            onChange={e => setDeckAction({ ...deckAction, [card.oracle_id]: { ...deckAction[card.oracle_id], category: e.target.value } })}
-                            className="bg-slate-900 border border-slate-700 rounded px-1 py-1 text-[10px] text-white outline-none"
-                        >
-                            <option value="Main">Main</option>
-                            <option value="Considering">Consid.</option>
-                        </select>
-                        <button onClick={() => addToDeck(card.oracle_id)} className="bg-indigo-600 p-1 rounded text-white"><Plus size={12} /></button>
-                    </div>
-                    <div className="flex gap-2">
-                        <input
-                            type="text"
-                            placeholder="New tag..."
-                            value={newTag[card.oracle_id] || ''}
-                            onChange={e => setNewTag({ ...newTag, [card.oracle_id]: e.target.value })}
-                            onKeyDown={e => e.key === 'Enter' && addTag(card.oracle_id)}
-                            className="flex-1 bg-slate-900 border border-slate-700 rounded px-2 py-1 text-xs text-white outline-none focus:border-indigo-500"
-                        />
-                        <button onClick={() => addTag(card.oracle_id)} className="text-indigo-400 hover:text-indigo-300 transition"><TagIcon size={14} /></button>
-                    </div>
-                </div>
-            </div>
+                <CardDisplay
+                    key={`${card.oracle_id}-${idx}`}
+                    card={card}
+                    mode={displayMode}
+                    onAdd={addCard}
+                    onRemove={removeCard}
+                    onAddTag={addTag}
+                    onRemoveTag={removeTag}
+                    deckAction={deckAction}
+                    setDeckAction={setDeckAction}
+                    decks={decks}
+                    onAddToDeck={addToDeck}
+                />
             ))}
         </div>
         {hasMore && (
@@ -380,6 +476,11 @@ const DecksView = ({ decks, selectedDeck, setSelectedDeck, refresh }: { decks: D
     const [cardSearch, setCardSearch] = useState('');
     const [cardSuggestions, setCardSuggestions] = useState<string[]>([]);
     const [category, setCategory] = useState('Main');
+    const [displayMode, setDisplayMode] = useState<'image' | 'text' | 'list'>('text');
+    const [isEditing, setIsEditing] = useState(false);
+    const [editName, setEditName] = useState('');
+    const [importText, setImportText] = useState('');
+    const [showImport, setShowImport] = useState(false);
 
     useEffect(() => { if (selectedDeck) fetchDeckDetails(selectedDeck.id); }, [selectedDeck]);
     const fetchDeckDetails = async (id: number) => { const res = await axios.get(`${API_BASE}/decks/${id}`); setDeckDetails(res.data); };
@@ -406,6 +507,34 @@ const DecksView = ({ decks, selectedDeck, setSelectedDeck, refresh }: { decks: D
         fetchDeckDetails(selectedDeck.id);
     };
 
+    const handleDeleteDeck = async (id: number) => {
+        if (!confirm('Are you sure you want to delete this deck?')) return;
+        await axios.delete(`${API_BASE}/decks/${id}`);
+        setSelectedDeck(null);
+        refresh();
+    };
+
+    const handleCloneDeck = async (id: number) => {
+        await axios.post(`${API_BASE}/decks/${id}/clone`);
+        refresh();
+    };
+
+    const handleRenameDeck = async () => {
+        if (!selectedDeck || !editName) return;
+        await axios.patch(`${API_BASE}/decks/${selectedDeck.id}`, { name: editName });
+        setIsEditing(false);
+        refresh();
+        fetchDeckDetails(selectedDeck.id);
+    };
+
+    const handleImport = async () => {
+        if (!selectedDeck) return;
+        await axios.post(`${API_BASE}/bulk_import`, { deck_id: selectedDeck.id, list_text: importText });
+        setImportText('');
+        setShowImport(false);
+        fetchDeckDetails(selectedDeck.id);
+    };
+
     return (
         <div className="p-8 h-full overflow-auto">
             {!selectedDeck ? (
@@ -417,23 +546,73 @@ const DecksView = ({ decks, selectedDeck, setSelectedDeck, refresh }: { decks: D
                     </div>
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                         {decks.map(deck => (
-                            <button key={deck.id} onClick={() => setSelectedDeck(deck)} className="bg-slate-800 p-6 rounded-xl border border-slate-700 text-left hover:border-indigo-500 transition group">
-                                <div className="flex justify-between items-center"><h3 className="text-xl font-bold group-hover:text-indigo-400 transition text-white">{deck.name}</h3><ChevronRight className="text-slate-600 group-hover:text-indigo-400 transition" /></div>
-                                <p className="text-slate-500 mt-2">{deck.description || 'No description'}</p>
-                            </button>
+                            <div key={deck.id} className="bg-slate-800 rounded-xl border border-slate-700 hover:border-indigo-500 transition group overflow-hidden">
+                                <button onClick={() => setSelectedDeck(deck)} className="w-full p-6 text-left">
+                                    <div className="flex justify-between items-center"><h3 className="text-xl font-bold group-hover:text-indigo-400 transition text-white">{deck.name}</h3><ChevronRight className="text-slate-600 group-hover:text-indigo-400 transition" /></div>
+                                    <p className="text-slate-500 mt-2">{deck.description || 'No description'}</p>
+                                </button>
+                                <div className="bg-slate-900/50 p-2 flex justify-end gap-4 border-t border-slate-700/50">
+                                    <button onClick={() => handleCloneDeck(deck.id)} className="text-slate-500 hover:text-indigo-400 flex items-center gap-1 text-xs"><Copy size={14} /> Clone</button>
+                                    <button onClick={() => handleDeleteDeck(deck.id)} className="text-slate-500 hover:text-rose-500 flex items-center gap-1 text-xs"><Trash2 size={14} /> Delete</button>
+                                </div>
+                            </div>
                         ))}
                     </div>
                 </div>
             ) : (
                 <div className="flex flex-col h-full">
-                    <button onClick={() => {setSelectedDeck(null); setDeckDetails(null);}} className="text-indigo-400 hover:text-indigo-300 mb-4 flex items-center gap-1 shrink-0">← Back</button>
+                    <div className="flex justify-between items-start mb-4">
+                        <button onClick={() => {setSelectedDeck(null); setDeckDetails(null);}} className="text-indigo-400 hover:text-indigo-300 flex items-center gap-1 shrink-0">← Back</button>
+                        <div className="flex gap-2">
+                            <button onClick={() => setShowImport(!showImport)} className="flex items-center gap-2 bg-slate-800 px-3 py-1.5 rounded-lg border border-slate-700 text-xs hover:text-white transition"><Upload size={14} /> Import</button>
+                            <div className="bg-slate-800 p-1 rounded-lg flex border border-slate-700">
+                                <button onClick={() => setDisplayMode('image')} className={`p-1 rounded ${displayMode === 'image' ? 'bg-indigo-600 text-white' : 'text-slate-500'}`}><Eye size={14} /></button>
+                                <button onClick={() => setDisplayMode('text')} className={`p-1 rounded ${displayMode === 'text' ? 'bg-indigo-600 text-white' : 'text-slate-500'}`}><TypeIcon size={14} /></button>
+                                <button onClick={() => setDisplayMode('list')} className={`p-1 rounded ${displayMode === 'list' ? 'bg-indigo-600 text-white' : 'text-slate-500'}`}><List size={14} /></button>
+                            </div>
+                        </div>
+                    </div>
+
+                    {showImport && (
+                        <div className="mb-8 bg-slate-800 p-6 rounded-xl border border-indigo-500/50 shadow-2xl">
+                            <h3 className="text-lg font-bold mb-4 flex items-center gap-2 text-white"><Upload size={20} /> Bulk Import to Deck</h3>
+                            <textarea
+                                value={importText}
+                                onChange={e => setImportText(e.target.value)}
+                                placeholder="Example:&#10;4 Grizzly Bears&#10;1x Island"
+                                className="w-full h-40 bg-slate-900 border border-slate-700 rounded-lg p-4 text-sm text-white focus:outline-none focus:border-indigo-500 mb-4"
+                            />
+                            <div className="flex justify-end gap-3">
+                                <button onClick={() => setShowImport(false)} className="px-6 py-2 rounded-lg text-slate-400 hover:text-white transition">Cancel</button>
+                                <button onClick={handleImport} className="px-8 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg font-bold transition">Import to Deck</button>
+                            </div>
+                        </div>
+                    )}
+
                     <div className="flex justify-between items-center mb-8 shrink-0 flex-wrap gap-4 text-white">
-                        <h1 className="text-4xl font-black">{selectedDeck.name}</h1>
+                        {isEditing ? (
+                            <div className="flex gap-2 items-center">
+                                <input
+                                    type="text"
+                                    value={editName}
+                                    onChange={e => setEditName(e.target.value)}
+                                    className="bg-slate-800 border-2 border-indigo-500 rounded-lg px-4 py-2 text-2xl font-black outline-none"
+                                    autoFocus
+                                />
+                                <button onClick={handleRenameDeck} className="bg-emerald-600 p-2 rounded-lg"><Plus size={20} /></button>
+                                <button onClick={() => setIsEditing(false)} className="bg-slate-700 p-2 rounded-lg"><X size={20} /></button>
+                            </div>
+                        ) : (
+                            <div className="flex items-center gap-4 group">
+                                <h1 className="text-4xl font-black">{deckDetails?.name || selectedDeck.name}</h1>
+                                <button onClick={() => { setIsEditing(true); setEditName(deckDetails?.name || selectedDeck.name); }} className="text-slate-600 hover:text-indigo-400 opacity-0 group-hover:opacity-100 transition"><Edit2 size={20} /></button>
+                            </div>
+                        )}
                         <div className="flex gap-2">
                             <select value={category} onChange={e => setCategory(e.target.value)} className="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm focus:outline-none"><option value="Main">Mainboard</option><option value="Considering">Considering</option><option value="History">History</option></select>
                             <div className="relative">
                                 <input type="text" value={cardSearch} onChange={handleCardSearchChange} onKeyDown={(e) => e.key === 'Enter' && addCardToDeck(cardSearch)} placeholder="Add card..." className="bg-slate-800 border border-slate-700 rounded-lg px-4 py-2 focus:outline-none text-white" />
-                                {cardSuggestions.length > 0 && (<div className="absolute w-full mt-2 bg-slate-800 border border-slate-700 rounded-lg shadow-2xl z-50 overflow-hidden">{cardSuggestions.map((s, i) => (<button key={i} onClick={() => addCardToDeck(s)} className="w-full text-left px-4 py-2 hover:bg-indigo-600 text-sm border-b border-slate-700 last:border-0 text-white">{s}</button>))}</div>)}
+                                {cardSuggestions.length > 0 && (<div className="absolute w-full mt-2 bg-slate-800 border border-slate-700 rounded-lg shadow-2xl z-50 overflow-hidden text-white">{cardSuggestions.map((s, i) => (<button key={i} onClick={() => addCardToDeck(s)} className="w-full text-left px-4 py-2 hover:bg-indigo-600 text-sm border-b border-slate-700 last:border-0">{s}</button>))}</div>)}
                             </div>
                         </div>
                     </div>

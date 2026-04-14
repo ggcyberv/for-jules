@@ -23,6 +23,9 @@ class CollectionCard(Base):
     mana_cost = Column(String)
     cmc = Column(Float)
     oracle_text = Column(String)
+    power = Column(String)
+    toughness = Column(String)
+    loyalty = Column(String)
     colors = Column(JSON) # List of colors on the card
     color_identity = Column(JSON) # List of colors in identity (includes symbols in text)
     image_url = Column(String)
