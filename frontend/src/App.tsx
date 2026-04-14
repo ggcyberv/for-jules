@@ -118,15 +118,32 @@ const CollectionView = ({ collection, refresh, decks }: { collection: Collection
   const [search, setSearch] = useState('');
   const [suggestions, setSuggestions] = useState<string[]>([]);
   const [displayMode, setDisplayMode] = useState<'image' | 'text'>('image');
-  const [filters, setFilters] = useState({ colors: [] as string[], format: '', type: '', keyword: '', set_code: '' });
+  const [filters, setFilters] = useState({ colors: [] as string[], colorIdentity: [] as string[], format: '', type: '', keyword: '', set_code: '', tag: '' });
   const [newTag, setNewTag] = useState<{ [key: string]: string }>({});
   const [deckAction, setDeckAction] = useState<{ [key: string]: { deckId: number, category: string } }>({});
+  const [availableTags, setAvailableTags] = useState<string[]>([]);
+
+  useEffect(() => {
+    fetchTags();
+  }, []);
+
+  const fetchTags = async () => {
+    const res = await axios.get(`${API_BASE}/tags`);
+    setAvailableTags(res.data);
+  };
 
   const handleColorToggle = (color: string) => {
     const newColors = filters.colors.includes(color)
       ? filters.colors.filter(c => c !== color)
       : [...filters.colors, color];
     setFilters({ ...filters, colors: newColors });
+  };
+
+  const handleIdentityToggle = (color: string) => {
+    const newId = filters.colorIdentity.includes(color)
+      ? filters.colorIdentity.filter(c => c !== color)
+      : [...filters.colorIdentity, color];
+    setFilters({ ...filters, colorIdentity: newId });
   };
 
   const handleSearchChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -162,6 +179,7 @@ const CollectionView = ({ collection, refresh, decks }: { collection: Collection
     await axios.post(`${API_BASE}/collection/${oracle_id}/tags`, { tag_name: tagName });
     setNewTag({ ...newTag, [oracle_id]: '' });
     refresh();
+    fetchTags();
   };
 
   const removeTag = async (oracle_id: string, tagName: string) => {
@@ -180,10 +198,12 @@ const CollectionView = ({ collection, refresh, decks }: { collection: Collection
   const applyFilters = () => {
     const params: any = {};
     if (filters.colors.length > 0) params.colors = filters.colors.join(',');
+    if (filters.colorIdentity.length > 0) params.color_identity = filters.colorIdentity.join(',');
     if (filters.format) params.format = filters.format;
     if (filters.type) params.type = filters.type;
     if (filters.keyword) params.keyword = filters.keyword;
     if (filters.set_code) params.set_code = filters.set_code;
+    if (filters.tag) params.tag = filters.tag;
     refresh(params);
   };
 
@@ -207,19 +227,40 @@ const CollectionView = ({ collection, refresh, decks }: { collection: Collection
                 </div>
                 )}
             </div>
-            <div className="flex gap-2 flex-wrap text-white items-center">
-                <div className="flex bg-slate-800 border border-slate-700 rounded-lg p-1 gap-1">
-                    {['W', 'U', 'B', 'R', 'G'].map(c => (
-                        <button
-                            key={c}
-                            onClick={() => handleColorToggle(c)}
-                            className={`w-8 h-8 rounded flex items-center justify-center font-bold transition ${filters.colors.includes(c) ? 'bg-indigo-600 text-white shadow-inner' : 'text-slate-500 hover:bg-slate-700'}`}
-                        >
-                            {c}
-                        </button>
-                    ))}
+            <div className="flex gap-4 flex-wrap text-white items-center">
+                <div className="flex flex-col gap-1">
+                    <span className="text-[10px] uppercase text-slate-500 font-bold ml-1">Colors</span>
+                    <div className="flex bg-slate-800 border border-slate-700 rounded-lg p-1 gap-1">
+                        {['W', 'U', 'B', 'R', 'G'].map(c => (
+                            <button
+                                key={c}
+                                onClick={() => handleColorToggle(c)}
+                                className={`w-6 h-6 rounded flex items-center justify-center text-xs font-bold transition ${filters.colors.includes(c) ? 'bg-indigo-600 text-white shadow-inner' : 'text-slate-500 hover:bg-slate-700'}`}
+                            >
+                                {c}
+                            </button>
+                        ))}
+                    </div>
                 </div>
-                <select value={filters.format} onChange={e => setFilters({...filters, format: e.target.value})} className="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm focus:outline-none"><option value="">All Formats</option><option value="standard">Standard</option><option value="commander">Commander</option><option value="pauper">Pauper</option></select>
+                <div className="flex flex-col gap-1">
+                    <span className="text-[10px] uppercase text-slate-500 font-bold ml-1">Color Identity</span>
+                    <div className="flex bg-slate-800 border border-slate-700 rounded-lg p-1 gap-1">
+                        {['W', 'U', 'B', 'R', 'G'].map(c => (
+                            <button
+                                key={c}
+                                onClick={() => handleIdentityToggle(c)}
+                                className={`w-6 h-6 rounded flex items-center justify-center text-xs font-bold transition ${filters.colorIdentity.includes(c) ? 'bg-emerald-600 text-white shadow-inner' : 'text-slate-500 hover:bg-slate-700'}`}
+                            >
+                                {c}
+                            </button>
+                        ))}
+                    </div>
+                </div>
+                <select value={filters.format} onChange={e => setFilters({...filters, format: e.target.value})} className="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm focus:outline-none mt-4"><option value="">All Formats</option><option value="standard">Standard</option><option value="commander">Commander</option><option value="pauper">Pauper</option></select>
+                <select value={filters.tag} onChange={e => setFilters({...filters, tag: e.target.value})} className="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm focus:outline-none w-32 mt-4">
+                    <option value="">Filter Tag...</option>
+                    {availableTags.map(t => <option key={t} value={t}>{t}</option>)}
+                </select>
                 <input type="text" placeholder="Set..." value={filters.set_code} onChange={e => setFilters({...filters, set_code: e.target.value})} className="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm focus:outline-none w-24" />
                 <input type="text" placeholder="Keyword..." value={filters.keyword} onChange={e => setFilters({...filters, keyword: e.target.value})} className="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm focus:outline-none w-32" />
                 <button onClick={applyFilters} className="bg-indigo-600 hover:bg-indigo-500 p-2 rounded-lg transition"><Filter size={20} /></button>
@@ -250,7 +291,7 @@ const CollectionView = ({ collection, refresh, decks }: { collection: Collection
                         <p className="text-slate-400 text-sm line-clamp-1">{card.details.oracle_text}</p>
                         <div className="mt-2 flex gap-2 flex-wrap">
                             {card.tags.map(t => <span key={t} className="text-[10px] bg-slate-700 px-2 py-0.5 rounded uppercase flex items-center gap-1">{t} <X size={10} className="cursor-pointer" onClick={() => removeTag(card.oracle_id, t)} /></span>)}
-                            {card.decks.map(d => <span key={d} className="text-[10px] bg-indigo-900/50 text-indigo-300 px-2 py-0.5 rounded uppercase">Deck: {d}</span>)}
+                            {card.decks.map(d => <span key={d} className="text-[10px] bg-indigo-900 text-white font-bold px-2 py-0.5 rounded uppercase border border-indigo-400 shadow-sm">Deck: {d}</span>)}
                             {card.details.keywords?.slice(0, 3).map(k => <span key={k} className="text-[10px] border border-slate-700 px-2 py-0.5 rounded uppercase text-slate-500">{k}</span>)}
                         </div>
                     </div>

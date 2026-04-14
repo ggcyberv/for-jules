@@ -12,7 +12,7 @@ except ImportError:
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
-DATABASE_URL = "sqlite:///./mtg_collection.db"
+DATABASE_URL = "sqlite:///./mtg_user_data.db"
 engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
@@ -69,24 +69,17 @@ def search_cards(q: str, lang: Optional[str] = None, exact: bool = False):
 @app.get("/collection")
 def get_collection(
     db: Session = Depends(get_db),
-    colors: Optional[str] = None, # Comma-separated list of colors
+    colors: Optional[str] = None, # Comma-separated list of colors on the card
+    color_identity: Optional[str] = None, # Comma-separated list for color ID
     type: Optional[str] = None,
     format: Optional[str] = None,
     keyword: Optional[str] = None,
     set_code: Optional[str] = None,
     min_price: Optional[float] = None,
-    max_price: Optional[float] = None
+    max_price: Optional[float] = None,
+    tag: Optional[str] = None
 ):
     query = db.query(models.CollectionCard)
-    if colors:
-        color_list = [c.upper() for c in colors.split(",")]
-        # Filter for cards whose color identity is exactly the set provided, or a subset?
-        # User said "all possible ones" which usually means cards that fit within those colors.
-        # So color_identity must be a subset of color_list.
-        # But for simple filtering, let's find cards that have at least all these colors?
-        # Actually, "color identity filtering" in MTG usually means cards that could go in a commander deck of those colors.
-        # So card.color_identity must be a subset of color_list.
-        pass # Will handle in loop below for complexity
     if type:
         query = query.filter(models.CollectionCard.type_line.ilike(f"%{type}%"))
     if min_price is not None:
@@ -98,10 +91,20 @@ def get_collection(
     result = []
     for card in cards:
         if colors:
-            color_list = [c.upper() for c in colors.split(",")]
-            card_colors = card.color_identity or []
-            # Check if card's color identity is within the allowed colors
-            if not set(card_colors).issubset(set(color_list)):
+            target_colors = set(c.upper() for c in colors.split(","))
+            card_colors = set(card.colors or [])
+            if not card_colors.issubset(target_colors):
+                continue
+
+        if color_identity:
+            target_id = set(c.upper() for c in color_identity.split(","))
+            card_id = set(card.color_identity or [])
+            if not card_id.issubset(target_id):
+                continue
+
+        if tag:
+            card_tags = [t.name.lower() for t in card.tags]
+            if tag.lower() not in card_tags:
                 continue
 
         if keyword and keyword.lower() not in [k.lower() for k in (card.keywords or [])]:
@@ -155,6 +158,7 @@ def add_to_collection(card_in: CardAdd, db: Session = Depends(get_db)):
             mana_cost=details.get("mana_cost"),
             cmc=details.get("cmc"),
             oracle_text=details.get("oracle_text"),
+            colors=details.get("colors"),
             color_identity=details.get("color_identity"),
             image_url=details.get("image_uris", {}).get("normal"),
             price_eur=price,
@@ -214,6 +218,11 @@ def create_deck(deck_in: DeckCreate, db: Session = Depends(get_db)):
     db.commit()
     db.refresh(deck)
     return deck
+
+@app.get("/tags")
+def get_tags(db: Session = Depends(get_db)):
+    tags = db.query(models.Tag).all()
+    return [t.name for t in tags]
 
 @app.get("/decks/{deck_id}")
 def get_deck(deck_id: int, db: Session = Depends(get_db)):
