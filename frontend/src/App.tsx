@@ -69,6 +69,7 @@ const CardDisplay = ({ card, mode, onAdd, onRemove, onAddTag, onRemoveTag, deckA
     category?: string
 }) => {
     const details = card.details || {};
+    const [loading, setLoading] = useState(false);
 
     if (mode === 'list') {
         return (
@@ -76,10 +77,17 @@ const CardDisplay = ({ card, mode, onAdd, onRemove, onAddTag, onRemoveTag, deckA
                 <div className="flex items-center gap-3 overflow-hidden">
                     <span className="text-indigo-400 font-bold text-xs shrink-0">{card.quantity}x</span>
                     <span className="font-medium text-xs text-white truncate">{card.name}</span>
+                    <div className="hidden md:flex gap-1 overflow-hidden">
+                        {card.decks?.map((d: string) => <span key={d} className="text-[8px] bg-indigo-900/50 text-indigo-300 px-1 py-0 rounded border border-indigo-500/30 whitespace-nowrap">D: {d}</span>)}
+                    </div>
                 </div>
-                <div className="flex items-center gap-2 shrink-0">
+                <div className="flex items-center gap-4 shrink-0 px-2">
                     <span className="text-slate-500 font-mono text-[10px]">{details.mana_cost}</span>
-                    {onRemoveFromDeck && <button onClick={() => onRemoveFromDeck(card.oracle_id, category!)} className="text-slate-600 hover:text-rose-500 opacity-0 group-hover:opacity-100 transition"><X size={12} /></button>}
+                    <div className="flex items-center gap-1">
+                        {onRemove && <button onClick={() => onRemove(card.oracle_id)} className="text-slate-500 hover:text-rose-500 opacity-0 group-hover:opacity-100 transition"><Minus size={12} /></button>}
+                        {onAdd && <button onClick={() => onAdd(card.name)} className="text-slate-500 hover:text-indigo-400 opacity-0 group-hover:opacity-100 transition"><Plus size={12} /></button>}
+                        {onRemoveFromDeck && <button onClick={() => onRemoveFromDeck(card.oracle_id, category!)} className="text-slate-600 hover:text-rose-500 opacity-0 group-hover:opacity-100 transition"><X size={12} /></button>}
+                    </div>
                 </div>
             </div>
         );
@@ -142,7 +150,7 @@ const CardDisplay = ({ card, mode, onAdd, onRemove, onAddTag, onRemoveTag, deckA
     }
 
     return (
-        <div className="bg-slate-800 rounded-xl overflow-hidden border border-slate-700 shadow-lg group transition hover:border-indigo-500 flex flex-col">
+        <div className={`bg-slate-800 rounded-xl overflow-hidden border border-slate-700 shadow-lg group transition hover:border-indigo-500 flex flex-col ${loading ? 'opacity-50 pointer-events-none' : ''}`}>
             <div className="relative aspect-[1/1.4]">
                 <img src={details.image_uris?.normal} alt={card.name} className="w-full h-full object-cover" />
                 {card.decks?.length > 0 && (
@@ -300,7 +308,9 @@ const CollectionView = ({ collection, refresh, decks, hasMore, loadMore }: { col
     } else { setSuggestions([]); }
   };
 
+  const [loading, setLoading] = useState(false);
   const addCard = async (name: string) => {
+    setLoading(true);
     const isExact = name.toLowerCase() === 'island' || name.toLowerCase() === 'swamp' || name.toLowerCase() === 'mountain' || name.toLowerCase() === 'forest' || name.toLowerCase() === 'plains';
     let res = await axios.get(`${API_BASE}/cards/search?q=${encodeURIComponent(name)}${isExact ? '&exact=true' : ''}`);
     if (!res.data || res.data.length === 0) {
@@ -311,6 +321,7 @@ const CollectionView = ({ collection, refresh, decks, hasMore, loadMore }: { col
       await axios.post(`${API_BASE}/collection/add`, { oracle_id: card.oracle_id, name: card.name });
       setSearch(''); setSuggestions([]); refresh();
     }
+    setLoading(false);
   };
 
   const removeCard = async (oracle_id: string) => {
@@ -353,10 +364,12 @@ const CollectionView = ({ collection, refresh, decks, hasMore, loadMore }: { col
   };
 
   const handleImport = async () => {
+    setLoading(true);
     await axios.post(`${API_BASE}/bulk_import`, { list_text: importText });
     setImportText('');
     setShowImport(false);
     refresh();
+    setLoading(false);
   };
 
   return (
@@ -440,7 +453,7 @@ const CollectionView = ({ collection, refresh, decks, hasMore, loadMore }: { col
         </div>
       </div>
       <div className="flex-1 p-8 overflow-auto">
-        <div className={`grid ${displayMode === 'image' ? 'grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5' : (displayMode === 'text' ? 'grid-cols-1 md:grid-cols-2 lg:grid-cols-3' : 'grid-cols-1')} gap-6`}>
+        <div className={`grid ${displayMode === 'image' ? 'grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5' : (displayMode === 'text' ? 'grid-cols-1 md:grid-cols-2 lg:grid-cols-3' : 'grid-cols-1')} gap-6 ${loading ? 'opacity-50' : ''}`}>
             {collection.map((card, idx) => (
                 <CardDisplay
                     key={`${card.oracle_id}-${idx}`}
@@ -483,6 +496,7 @@ const DecksView = ({ decks, selectedDeck, setSelectedDeck, refresh }: { decks: D
     const [editName, setEditName] = useState('');
     const [importText, setImportText] = useState('');
     const [showImport, setShowImport] = useState(false);
+    const [loading, setLoading] = useState(false);
 
     useEffect(() => { if (selectedDeck) fetchDeckDetails(selectedDeck.id); }, [selectedDeck]);
     const fetchDeckDetails = async (id: number) => { const res = await axios.get(`${API_BASE}/decks/${id}`); setDeckDetails(res.data); };
@@ -493,6 +507,7 @@ const DecksView = ({ decks, selectedDeck, setSelectedDeck, refresh }: { decks: D
     };
 
     const addCardToDeck = async (name: string) => {
+        setLoading(true);
         const isExact = name.toLowerCase() === 'island' || name.toLowerCase() === 'swamp' || name.toLowerCase() === 'mountain' || name.toLowerCase() === 'forest' || name.toLowerCase() === 'plains';
         const res = await axios.get(`${API_BASE}/cards/search?q=${encodeURIComponent(name)}${isExact ? '&exact=true' : ''}`);
         if (res.data && res.data.length > 0 && selectedDeck) {
@@ -501,6 +516,7 @@ const DecksView = ({ decks, selectedDeck, setSelectedDeck, refresh }: { decks: D
             await axios.post(`${API_BASE}/decks/${selectedDeck.id}/add`, { oracle_id: card.oracle_id, category });
             setCardSearch(''); setCardSuggestions([]); fetchDeckDetails(selectedDeck.id);
         }
+        setLoading(false);
     };
 
     const removeCardFromDeck = async (oracle_id: string, cat: string) => {
@@ -531,10 +547,12 @@ const DecksView = ({ decks, selectedDeck, setSelectedDeck, refresh }: { decks: D
 
     const handleImport = async () => {
         if (!selectedDeck) return;
+        setLoading(true);
         await axios.post(`${API_BASE}/bulk_import`, { deck_id: selectedDeck.id, list_text: importText });
         setImportText('');
         setShowImport(false);
         fetchDeckDetails(selectedDeck.id);
+        setLoading(false);
     };
 
     return (
@@ -630,22 +648,19 @@ const DecksView = ({ decks, selectedDeck, setSelectedDeck, refresh }: { decks: D
                                 return (
                                     <div key={cat} className="bg-slate-800/30 p-6 rounded-2xl border border-slate-800">
                                         <h2 className="text-2xl font-bold mb-6 flex items-center gap-2"><div className="w-2 h-8 bg-indigo-500 rounded-full" />{cat} ({catCards.reduce((sum, c) => sum + c.quantity, 0)})</h2>
-                                        <div className="space-y-6">
+                                        <div className={`space-y-6 ${loading ? 'opacity-50 pointer-events-none' : ''}`}>
                                             {Object.entries(typedCards).map(([type, cards]) => (
                                                 <div key={type}>
                                                     <h3 className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-3 border-b border-slate-700/50 pb-1">{type} ({cards.reduce((sum, c) => sum + c.quantity, 0)})</h3>
-                                                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                                                    <div className={`grid ${displayMode === 'image' ? 'grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5' : (displayMode === 'text' ? 'grid-cols-1 md:grid-cols-2 lg:grid-cols-3' : 'grid-cols-1')} gap-4`}>
                                                         {cards.map((c, i) => (
-                                                            <div key={i} className="flex justify-between items-center bg-slate-800 p-3 rounded-xl border border-slate-700 hover:border-slate-500 transition group">
-                                                                <div className="flex items-center gap-3">
-                                                                    <span className="text-indigo-400 font-black">{c.quantity}x</span>
-                                                                    <span className="font-semibold text-sm">{c.name}</span>
-                                                                </div>
-                                                                <div className="flex items-center gap-3">
-                                                                    <span className="text-slate-500 font-mono text-[10px]">{c.details.mana_cost}</span>
-                                                                    <button onClick={() => removeCardFromDeck(c.oracle_id, cat)} className="text-slate-600 hover:text-rose-500 transition"><X size={14} /></button>
-                                                                </div>
-                                                            </div>
+                                                            <CardDisplay
+                                                                key={`${c.oracle_id}-${i}`}
+                                                                card={c}
+                                                                mode={displayMode}
+                                                                onRemoveFromDeck={removeCardFromDeck}
+                                                                category={cat}
+                                                            />
                                                         ))}
                                                     </div>
                                                 </div>

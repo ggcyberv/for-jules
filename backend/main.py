@@ -123,6 +123,19 @@ def get_collection(
     if max_price is not None:
         query = query.filter(models.CollectionCard.price_eur <= max_price)
 
+    if set_code:
+        # Optimization: Fetch all oracle_ids for this set first
+        cache_key = f"set_oracle_ids:{set_code}"
+        cached = db.query(models.APICache).filter(models.APICache.query_key == cache_key).first()
+        if cached and (datetime.datetime.utcnow() - cached.timestamp).total_seconds() < 86400:
+            set_oracle_ids = set(cached.response_json)
+        else:
+            res = client.search_cards(f"set:{set_code}")
+            set_oracle_ids = {c['oracle_id'] for c in res if 'oracle_id' in c}
+            _save_to_api_cache(db, cache_key, list(set_oracle_ids))
+            db.commit()
+        query = query.filter(models.CollectionCard.oracle_id.in_(list(set_oracle_ids)))
+
     all_cards = query.all()
     filtered_cards = []
     for card in all_cards:
@@ -138,17 +151,6 @@ def get_collection(
             if tag.lower() not in [t.name.lower() for t in card.tags]: continue
         if keyword and keyword.lower() not in [k.lower() for k in (card.keywords or [])]: continue
         if format and (card.legalities or {}).get(format) != "legal": continue
-        if set_code:
-            # This is slow, but we'll try to use cache
-            cache_key = f"search:oracle_id:{card.oracle_id} set:{set_code}:None:False"
-            cached = db.query(models.APICache).filter(models.APICache.query_key == cache_key).first()
-            if cached and (datetime.datetime.utcnow() - cached.timestamp).total_seconds() < 86400:
-                if not cached.response_json: continue
-            else:
-                res = client.search_cards(f"oracle_id:{card.oracle_id} set:{set_code}")
-                _save_to_api_cache(db, cache_key, res)
-                db.commit()
-                if not res: continue
 
         decks = [dc.deck.name for dc in card.deck_cards]
         filtered_cards.append({
@@ -221,45 +223,99 @@ def remove_from_collection(card_in: CardRemove, db: Session = Depends(get_db)):
 @app.post("/bulk_import")
 def bulk_import(import_in: BulkImport, db: Session = Depends(get_db)):
     lines = import_in.list_text.strip().split('\n')
-    added_count = 0
+
+    # Pre-parse lines
+    parsed_items = []
     for line in lines:
         line = line.strip()
         if not line: continue
-        match = re.match(r'^(\d+)x?\s+([^(]+)(?:\s+\(.*\))?.*$', line)
+        # Regex to handle: "4 Lightning Bolt", "4x Lightning Bolt", "1 Counterspell (ELD) 22"
+        match = re.match(r'^(\d+)x?\s+([^(]+)(?:\s+\(([^)]+)\))?(?:\s+(\d+))?.*$', line)
         if match:
             qty = int(match.group(1))
             name = match.group(2).strip()
+            # Clean up trailing numbers if name wasn't perfectly parsed
             name = re.sub(r'\s+\d+.*$', '', name).strip()
+            set_code = match.group(3)
+            collector_number = match.group(4)
+            parsed_items.append({"qty": qty, "name": name, "set": set_code, "cn": collector_number})
 
-            # 1. Check if we already have it in collection
-            existing = db.query(models.CollectionCard).filter(models.CollectionCard.name.ilike(name)).first()
-            if existing:
-                oracle_id = existing.oracle_id
-                _add_to_collection_internal(oracle_id, existing.name, db, qty)
-            else:
-                # 2. Check cache
-                cache_key = f"search:{name}:None:True"
-                cached = db.query(models.APICache).filter(models.APICache.query_key == cache_key).first()
-                if cached and (datetime.datetime.utcnow() - cached.timestamp).total_seconds() < 86400:
-                    search_res = cached.response_json
+    if not parsed_items:
+        return {"status": "success", "added": 0}
+
+    # Identify what we already have in DB or Cache
+    to_fetch = []
+    results_map = {} # oracle_id -> card_data
+
+    for item in parsed_items:
+        name = item['name']
+        existing = db.query(models.CollectionCard).filter(models.CollectionCard.name.ilike(name)).first()
+        if existing:
+            item['oracle_id'] = existing.oracle_id
+            item['resolved_name'] = existing.name
+            continue
+
+        # Check cache
+        cache_key = f"search:{name}:None:True"
+        cached = db.query(models.APICache).filter(models.APICache.query_key == cache_key).first()
+        if cached and (datetime.datetime.utcnow() - cached.timestamp).total_seconds() < 86400:
+            search_res = cached.response_json
+            if search_res:
+                item['oracle_id'] = search_res[0]['oracle_id']
+                item['resolved_name'] = search_res[0]['name']
+                results_map[item['oracle_id']] = search_res[0]
+                continue
+
+        # Need to fetch from Scryfall
+        to_fetch.append(item)
+
+    # Batch fetch from Scryfall
+    if to_fetch:
+        for i in range(0, len(to_fetch), 75):
+            batch = to_fetch[i:i+75]
+            identifiers = []
+            for b in batch:
+                if b['set'] and b['cn']:
+                    identifiers.append({"set": b['set'], "collector_number": b['cn']})
                 else:
-                    search_res = client.search_cards(name, exact=True) or client.search_cards(name)
-                    _save_to_api_cache(db, cache_key, search_res)
+                    identifiers.append({"name": b['name']})
 
-                if search_res:
-                    card_data = search_res[0]
-                    oracle_id = card_data['oracle_id']
-                    _add_to_collection_internal(oracle_id, card_data['name'], db, qty, card_data)
-                    existing = db.query(models.CollectionCard).filter(models.CollectionCard.oracle_id == oracle_id).first()
+            scry_results = client.get_collection_batch(identifiers)
+            for idx, res in enumerate(scry_results):
+                if res.get("oracle_id"):
+                    oracle_id = res['oracle_id']
+                    name = res['name']
+                    # Map back to original item
+                    batch[idx]['oracle_id'] = oracle_id
+                    batch[idx]['resolved_name'] = name
+                    results_map[oracle_id] = res
+                    # Save to cache
+                    _save_to_api_cache(db, f"search:{batch[idx]['name']}:None:True", [res])
+
+    # Now add all to collection
+    added_count = 0
+    for item in parsed_items:
+        if 'oracle_id' in item:
+            card_data = results_map.get(item['oracle_id'])
+            _add_to_collection_internal(item['oracle_id'], item['resolved_name'], db, item['qty'], card_data)
+
+            if import_in.deck_id:
+                dc = db.query(models.DeckCard).filter(
+                    models.DeckCard.deck_id == import_in.deck_id,
+                    models.DeckCard.oracle_id == item['oracle_id'],
+                    models.DeckCard.category == "Main"
+                ).first()
+                if dc:
+                    dc.quantity += item['qty']
                 else:
-                    continue
-
-            if import_in.deck_id and existing:
-                dc = db.query(models.DeckCard).filter(models.DeckCard.deck_id == import_in.deck_id, models.DeckCard.oracle_id == existing.oracle_id, models.DeckCard.category == "Main").first()
-                if dc: dc.quantity += qty
-                else: db.add(models.DeckCard(deck_id=import_in.deck_id, oracle_id=existing.oracle_id, quantity=qty, category="Main"))
-
+                    db.add(models.DeckCard(
+                        deck_id=import_in.deck_id,
+                        oracle_id=item['oracle_id'],
+                        quantity=item['qty'],
+                        category="Main"
+                    ))
             added_count += 1
+
     db.commit()
     return {"status": "success", "added": added_count}
 

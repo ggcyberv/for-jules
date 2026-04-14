@@ -31,19 +31,37 @@ class ScryfallClient:
         if exact:
             q = f"!\"{query}\""
         else:
-            q = f"name:\"{query}\"" if " " in query else query
+            # If query already contains search operators like set:, oracle_id:, etc.
+            # we should not wrap it in name:""
+            if ":" in query:
+                q = query
+            else:
+                q = f"name:\"{query}\"" if " " in query else query
 
         if lang:
             q += f" lang:{lang}"
 
         params = {"q": q, "include_multilingual": "true"}
-        try:
-            response = requests.get(f"{SCRYFALL_API_URL}/cards/search", params=params, timeout=10)
-            if response.status_code == 200:
-                return response.json().get("data", [])
-        except requests.exceptions.RequestException:
-            pass
-        return []
+        all_data = []
+        url = f"{SCRYFALL_API_URL}/cards/search"
+
+        while url:
+            try:
+                response = requests.get(url, params=params, timeout=10)
+                params = None # Only first call uses params
+                if response.status_code == 200:
+                    data = response.json()
+                    all_data.extend(data.get("data", []))
+                    if data.get("has_more"):
+                        url = data.get("next_page")
+                        self._rate_limit()
+                    else:
+                        url = None
+                else:
+                    url = None
+            except requests.exceptions.RequestException:
+                url = None
+        return all_data
 
     def get_card_details(self, oracle_id: str) -> Optional[Dict]:
         self._rate_limit()
@@ -91,3 +109,15 @@ class ScryfallClient:
             if prices:
                 return min(prices)
         return 0.0
+
+    def get_collection_batch(self, identifiers: List[Dict]) -> List[Dict]:
+        """Fetch multiple cards in one request. Up to 75 identifiers."""
+        self._rate_limit()
+        try:
+            response = requests.post(f"{SCRYFALL_API_URL}/cards/collection", json={"identifiers": identifiers}, timeout=15)
+            if response.status_code == 200:
+                data = response.json()
+                return data.get("data", [])
+        except requests.exceptions.RequestException:
+            pass
+        return []
