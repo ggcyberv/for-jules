@@ -15,18 +15,18 @@ class CollectionCard(Base):
     __tablename__ = 'collection_cards'
 
     oracle_id = Column(String, primary_key=True)
-    name = Column(String, nullable=False)
+    name = Column(String, nullable=False, index=True)
     quantity = Column(Integer, default=0)
 
     # Cached Scryfall data
-    type_line = Column(String)
+    type_line = Column(String, index=True)
     mana_cost = Column(String)
     cmc = Column(Float)
     oracle_text = Column(String)
     colors = Column(JSON) # List of colors on the card
     color_identity = Column(JSON) # List of colors in identity (includes symbols in text)
     image_url = Column(String)
-    price_eur = Column(Float)
+    price_eur = Column(Float, index=True)
     legalities = Column(JSON)
     keywords = Column(JSON)
 
@@ -68,3 +68,10 @@ class ValueHistory(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     timestamp = Column(DateTime, default=datetime.datetime.utcnow)
     total_value = Column(Float, nullable=False)
+
+class APICache(Base):
+    __tablename__ = 'api_cache'
+
+    query_key = Column(String, primary_key=True) # e.g., 'autocomplete:Griz' or 'search:island'
+    response_json = Column(JSON, nullable=False)
+    timestamp = Column(DateTime, default=datetime.datetime.utcnow)

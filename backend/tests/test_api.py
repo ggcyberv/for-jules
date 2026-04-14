@@ -22,5 +22,5 @@ def test_get_collection():
     response = client.get("/collection")
     assert response.status_code == 200
     data = response.json()
-    assert len(data) > 0
-    assert data[0]["name"] == "Grizzly Bears"
+    assert len(data["items"]) > 0
+    assert data["items"][0]["name"] == "Grizzly Bears"

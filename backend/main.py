@@ -59,12 +59,36 @@ def get_db():
         db.close()
 
 @app.get("/cards/autocomplete")
-def autocomplete(q: str):
-    return client.autocomplete(q)
+def autocomplete(q: str, db: Session = Depends(get_db)):
+    cache_key = f"autocomplete:{q}"
+    cached = db.query(models.APICache).filter(models.APICache.query_key == cache_key).first()
+    if cached and (datetime.datetime.utcnow() - cached.timestamp).total_seconds() < 86400:
+        return cached.response_json
+
+    res = client.autocomplete(q)
+    if cached:
+        cached.response_json = res
+        cached.timestamp = datetime.datetime.utcnow()
+    else:
+        db.add(models.APICache(query_key=cache_key, response_json=res))
+    db.commit()
+    return res
 
 @app.get("/cards/search")
-def search_cards(q: str, lang: Optional[str] = None, exact: bool = False):
-    return client.search_cards(q, lang, exact)
+def search_cards(q: str, lang: Optional[str] = None, exact: bool = False, db: Session = Depends(get_db)):
+    cache_key = f"search:{q}:{lang}:{exact}"
+    cached = db.query(models.APICache).filter(models.APICache.query_key == cache_key).first()
+    if cached and (datetime.datetime.utcnow() - cached.timestamp).total_seconds() < 86400:
+        return cached.response_json
+
+    res = client.search_cards(q, lang, exact)
+    if cached:
+        cached.response_json = res
+        cached.timestamp = datetime.datetime.utcnow()
+    else:
+        db.add(models.APICache(query_key=cache_key, response_json=res))
+    db.commit()
+    return res
 
 @app.get("/collection")
 def get_collection(
@@ -77,7 +101,9 @@ def get_collection(
     set_code: Optional[str] = None,
     min_price: Optional[float] = None,
     max_price: Optional[float] = None,
-    tag: Optional[str] = None
+    tag: Optional[str] = None,
+    limit: int = 20,
+    offset: int = 0
 ):
     query = db.query(models.CollectionCard)
     if type:
@@ -87,9 +113,10 @@ def get_collection(
     if max_price is not None:
         query = query.filter(models.CollectionCard.price_eur <= max_price)
 
-    cards = query.all()
-    result = []
-    for card in cards:
+    # To correctly handle pagination with complex filters, we filter then slice
+    all_cards = query.all()
+    filtered_cards = []
+    for card in all_cards:
         if colors:
             target_colors = set(c.upper() for c in colors.split(","))
             card_colors = set(card.colors or [])
@@ -117,7 +144,7 @@ def get_collection(
                 continue
 
         decks = [dc.deck.name for dc in card.deck_cards]
-        result.append({
+        filtered_cards.append({
             "oracle_id": card.oracle_id,
             "name": card.name,
             "quantity": card.quantity,
@@ -134,7 +161,14 @@ def get_collection(
             "decks": list(set(decks)),
             "tags": [t.name for t in card.tags]
         })
-    return result
+
+    # Apply pagination on filtered list
+    paginated = filtered_cards[offset:offset+limit]
+    return {
+        "items": paginated,
+        "total": len(filtered_cards),
+        "has_more": offset + limit < len(filtered_cards)
+    }
 
 @app.post("/collection/add")
 def add_to_collection(card_in: CardAdd, db: Session = Depends(get_db)):

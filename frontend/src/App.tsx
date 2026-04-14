@@ -57,6 +57,9 @@ interface Stats {
 const App = () => {
   const [activeTab, setActiveTab] = useState('collection');
   const [collection, setCollection] = useState<CollectionItem[]>([]);
+  const [hasMore, setHasMore] = useState(false);
+  const [offset, setOffset] = useState(0);
+  const [activeFilters, setActiveFilters] = useState({});
   const [decks, setDecks] = useState<Deck[]>([]);
   const [selectedDeck, setSelectedDeck] = useState<Deck | null>(null);
   const [stats, setStats] = useState<Stats>({ total_value: 0, history: [] });
@@ -67,11 +70,23 @@ const App = () => {
     fetchStats();
   }, []);
 
-  const fetchCollection = async (params = {}) => {
+  const fetchCollection = async (params = {}, append = false) => {
     try {
-      const res = await axios.get(`${API_BASE}/collection`, { params });
-      setCollection(res.data);
+      const res = await axios.get(`${API_BASE}/collection`, { params: { ...params, offset: append ? offset : 0, limit: 20 } });
+      if (append) {
+        setCollection(prev => [...prev, ...res.data.items]);
+        setOffset(prev => prev + 20);
+      } else {
+        setCollection(res.data.items);
+        setOffset(20);
+        setActiveFilters(params);
+      }
+      setHasMore(res.data.has_more);
     } catch (e) { console.error(e); }
+  };
+
+  const loadMore = () => {
+    fetchCollection(activeFilters, true);
   };
 
   const fetchDecks = async () => {
@@ -106,7 +121,7 @@ const App = () => {
         </div>
       </div>
       <div className="flex-1 overflow-auto bg-slate-900">
-        {activeTab === 'collection' && <CollectionView collection={collection} refresh={fetchCollection} decks={decks} />}
+        {activeTab === 'collection' && <CollectionView collection={collection} refresh={fetchCollection} decks={decks} hasMore={hasMore} loadMore={loadMore} />}
         {activeTab === 'decks' && <DecksView decks={decks} selectedDeck={selectedDeck} setSelectedDeck={setSelectedDeck} refresh={fetchDecks} />}
         {activeTab === 'stats' && <StatsView stats={stats} />}
       </div>
@@ -114,7 +129,7 @@ const App = () => {
   );
 };
 
-const CollectionView = ({ collection, refresh, decks }: { collection: CollectionItem[], refresh: (p?: any) => void, decks: Deck[] }) => {
+const CollectionView = ({ collection, refresh, decks, hasMore, loadMore }: { collection: CollectionItem[], refresh: (p?: any) => void, decks: Deck[], hasMore: boolean, loadMore: () => void }) => {
   const [search, setSearch] = useState('');
   const [suggestions, setSuggestions] = useState<string[]>([]);
   const [displayMode, setDisplayMode] = useState<'image' | 'text'>('image');
@@ -122,6 +137,7 @@ const CollectionView = ({ collection, refresh, decks }: { collection: Collection
   const [newTag, setNewTag] = useState<{ [key: string]: string }>({});
   const [deckAction, setDeckAction] = useState<{ [key: string]: { deckId: number, category: string } }>({});
   const [availableTags, setAvailableTags] = useState<string[]>([]);
+  const [searchTimeout, setSearchTimeout] = useState<any>(null);
 
   useEffect(() => {
     fetchTags();
@@ -146,12 +162,17 @@ const CollectionView = ({ collection, refresh, decks }: { collection: Collection
     setFilters({ ...filters, colorIdentity: newId });
   };
 
-  const handleSearchChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const val = e.target.value;
     setSearch(val);
+    if (searchTimeout) clearTimeout(searchTimeout);
+
     if (val.length > 2) {
-      const res = await axios.get(`${API_BASE}/cards/autocomplete?q=${val}`);
-      setSuggestions(res.data);
+      const timeout = setTimeout(async () => {
+        const res = await axios.get(`${API_BASE}/cards/autocomplete?q=${val}`);
+        setSuggestions(res.data);
+      }, 300);
+      setSearchTimeout(timeout);
     } else { setSuggestions([]); }
   };
 
@@ -269,8 +290,8 @@ const CollectionView = ({ collection, refresh, decks }: { collection: Collection
       </div>
       <div className="flex-1 p-8 overflow-auto">
         <div className={`grid ${displayMode === 'image' ? 'grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5' : 'grid-cols-1'} gap-6`}>
-            {collection.map((card) => (
-            <div key={card.oracle_id} className="bg-slate-800 rounded-xl overflow-hidden border border-slate-700 shadow-lg group transition hover:border-indigo-500 flex flex-col">
+            {collection.map((card, idx) => (
+            <div key={`${card.oracle_id}-${idx}`} className="bg-slate-800 rounded-xl overflow-hidden border border-slate-700 shadow-lg group transition hover:border-indigo-500 flex flex-col">
                 {displayMode === 'image' ? (
                 <div className="relative aspect-[1/1.4]">
                     <img src={card.details.image_uris?.normal} alt={card.name} className="w-full h-full object-cover" />
@@ -338,6 +359,16 @@ const CollectionView = ({ collection, refresh, decks }: { collection: Collection
             </div>
             ))}
         </div>
+        {hasMore && (
+            <div className="flex justify-center mt-12 mb-24">
+                <button
+                    onClick={loadMore}
+                    className="bg-slate-800 hover:bg-slate-700 border border-slate-700 px-8 py-3 rounded-xl font-bold transition shadow-lg text-white"
+                >
+                    Load More Cards
+                </button>
+            </div>
+        )}
       </div>
     </div>
   );
