@@ -106,7 +106,7 @@ const App = () => {
         </div>
       </div>
       <div className="flex-1 overflow-auto bg-slate-900">
-        {activeTab === 'collection' && <CollectionView collection={collection} refresh={fetchCollection} />}
+        {activeTab === 'collection' && <CollectionView collection={collection} refresh={fetchCollection} decks={decks} />}
         {activeTab === 'decks' && <DecksView decks={decks} selectedDeck={selectedDeck} setSelectedDeck={setSelectedDeck} refresh={fetchDecks} />}
         {activeTab === 'stats' && <StatsView stats={stats} />}
       </div>
@@ -114,12 +114,20 @@ const App = () => {
   );
 };
 
-const CollectionView = ({ collection, refresh }: { collection: CollectionItem[], refresh: (p?: any) => void }) => {
+const CollectionView = ({ collection, refresh, decks }: { collection: CollectionItem[], refresh: (p?: any) => void, decks: Deck[] }) => {
   const [search, setSearch] = useState('');
   const [suggestions, setSuggestions] = useState<string[]>([]);
   const [displayMode, setDisplayMode] = useState<'image' | 'text'>('image');
-  const [filters, setFilters] = useState({ color: '', format: '', type: '', keyword: '', set_code: '' });
+  const [filters, setFilters] = useState({ colors: [] as string[], format: '', type: '', keyword: '', set_code: '' });
   const [newTag, setNewTag] = useState<{ [key: string]: string }>({});
+  const [deckAction, setDeckAction] = useState<{ [key: string]: { deckId: number, category: string } }>({});
+
+  const handleColorToggle = (color: string) => {
+    const newColors = filters.colors.includes(color)
+      ? filters.colors.filter(c => c !== color)
+      : [...filters.colors, color];
+    setFilters({ ...filters, colors: newColors });
+  };
 
   const handleSearchChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const val = e.target.value;
@@ -131,9 +139,10 @@ const CollectionView = ({ collection, refresh }: { collection: CollectionItem[],
   };
 
   const addCard = async (name: string) => {
-    let res = await axios.get(`${API_BASE}/cards/search?q=${encodeURIComponent(name)}`);
+    const isExact = name.toLowerCase() === 'island' || name.toLowerCase() === 'swamp' || name.toLowerCase() === 'mountain' || name.toLowerCase() === 'forest' || name.toLowerCase() === 'plains';
+    let res = await axios.get(`${API_BASE}/cards/search?q=${encodeURIComponent(name)}${isExact ? '&exact=true' : ''}`);
     if (!res.data || res.data.length === 0) {
-        res = await axios.get(`${API_BASE}/cards/search?q=${encodeURIComponent(name)}&lang=de`);
+        res = await axios.get(`${API_BASE}/cards/search?q=${encodeURIComponent(name)}&lang=de${isExact ? '&exact=true' : ''}`);
     }
     if (res.data && res.data.length > 0) {
       const card = res.data[0];
@@ -160,9 +169,17 @@ const CollectionView = ({ collection, refresh }: { collection: CollectionItem[],
     refresh();
   };
 
+  const addToDeck = async (oracle_id: string) => {
+    const action = deckAction[oracle_id];
+    if (!action || !action.deckId) return;
+    await axios.post(`${API_BASE}/decks/${action.deckId}/add`, { oracle_id, category: action.category });
+    setDeckAction({ ...deckAction, [oracle_id]: { ...action, deckId: 0 } });
+    refresh();
+  };
+
   const applyFilters = () => {
     const params: any = {};
-    if (filters.color) params.color = filters.color;
+    if (filters.colors.length > 0) params.colors = filters.colors.join(',');
     if (filters.format) params.format = filters.format;
     if (filters.type) params.type = filters.type;
     if (filters.keyword) params.keyword = filters.keyword;
@@ -190,8 +207,18 @@ const CollectionView = ({ collection, refresh }: { collection: CollectionItem[],
                 </div>
                 )}
             </div>
-            <div className="flex gap-2 flex-wrap text-white">
-                <select value={filters.color} onChange={e => setFilters({...filters, color: e.target.value})} className="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm focus:outline-none"><option value="">All Colors</option><option value="W">White</option><option value="U">Blue</option><option value="B">Black</option><option value="R">Red</option><option value="G">Green</option></select>
+            <div className="flex gap-2 flex-wrap text-white items-center">
+                <div className="flex bg-slate-800 border border-slate-700 rounded-lg p-1 gap-1">
+                    {['W', 'U', 'B', 'R', 'G'].map(c => (
+                        <button
+                            key={c}
+                            onClick={() => handleColorToggle(c)}
+                            className={`w-8 h-8 rounded flex items-center justify-center font-bold transition ${filters.colors.includes(c) ? 'bg-indigo-600 text-white shadow-inner' : 'text-slate-500 hover:bg-slate-700'}`}
+                        >
+                            {c}
+                        </button>
+                    ))}
+                </div>
                 <select value={filters.format} onChange={e => setFilters({...filters, format: e.target.value})} className="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm focus:outline-none"><option value="">All Formats</option><option value="standard">Standard</option><option value="commander">Commander</option><option value="pauper">Pauper</option></select>
                 <input type="text" placeholder="Set..." value={filters.set_code} onChange={e => setFilters({...filters, set_code: e.target.value})} className="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm focus:outline-none w-24" />
                 <input type="text" placeholder="Keyword..." value={filters.keyword} onChange={e => setFilters({...filters, keyword: e.target.value})} className="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm focus:outline-none w-32" />
@@ -234,17 +261,38 @@ const CollectionView = ({ collection, refresh }: { collection: CollectionItem[],
                     </div>
                 </div>
                 )}
-                {/* Tag Input */}
-                <div className="p-3 border-t border-slate-700/50 flex gap-2">
-                    <input
-                        type="text"
-                        placeholder="New tag..."
-                        value={newTag[card.oracle_id] || ''}
-                        onChange={e => setNewTag({ ...newTag, [card.oracle_id]: e.target.value })}
-                        onKeyDown={e => e.key === 'Enter' && addTag(card.oracle_id)}
-                        className="flex-1 bg-slate-900 border border-slate-700 rounded px-2 py-1 text-xs text-white outline-none focus:border-indigo-500"
-                    />
-                    <button onClick={() => addTag(card.oracle_id)} className="text-indigo-400 hover:text-indigo-300 transition"><TagIcon size={14} /></button>
+                {/* Deck & Tag Actions */}
+                <div className="p-3 border-t border-slate-700/50 space-y-2">
+                    <div className="flex gap-1">
+                        <select
+                            value={deckAction[card.oracle_id]?.deckId || ''}
+                            onChange={e => setDeckAction({ ...deckAction, [card.oracle_id]: { deckId: parseInt(e.target.value), category: deckAction[card.oracle_id]?.category || 'Main' } })}
+                            className="flex-1 bg-slate-900 border border-slate-700 rounded px-1 py-1 text-[10px] text-white outline-none"
+                        >
+                            <option value="">Add to Deck...</option>
+                            {decks.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
+                        </select>
+                        <select
+                            value={deckAction[card.oracle_id]?.category || 'Main'}
+                            onChange={e => setDeckAction({ ...deckAction, [card.oracle_id]: { ...deckAction[card.oracle_id], category: e.target.value } })}
+                            className="bg-slate-900 border border-slate-700 rounded px-1 py-1 text-[10px] text-white outline-none"
+                        >
+                            <option value="Main">Main</option>
+                            <option value="Considering">Consid.</option>
+                        </select>
+                        <button onClick={() => addToDeck(card.oracle_id)} className="bg-indigo-600 p-1 rounded text-white"><Plus size={12} /></button>
+                    </div>
+                    <div className="flex gap-2">
+                        <input
+                            type="text"
+                            placeholder="New tag..."
+                            value={newTag[card.oracle_id] || ''}
+                            onChange={e => setNewTag({ ...newTag, [card.oracle_id]: e.target.value })}
+                            onKeyDown={e => e.key === 'Enter' && addTag(card.oracle_id)}
+                            className="flex-1 bg-slate-900 border border-slate-700 rounded px-2 py-1 text-xs text-white outline-none focus:border-indigo-500"
+                        />
+                        <button onClick={() => addTag(card.oracle_id)} className="text-indigo-400 hover:text-indigo-300 transition"><TagIcon size={14} /></button>
+                    </div>
                 </div>
             </div>
             ))}
@@ -270,7 +318,8 @@ const DecksView = ({ decks, selectedDeck, setSelectedDeck, refresh }: { decks: D
     };
 
     const addCardToDeck = async (name: string) => {
-        const res = await axios.get(`${API_BASE}/cards/search?q=${encodeURIComponent(name)}`);
+        const isExact = name.toLowerCase() === 'island' || name.toLowerCase() === 'swamp' || name.toLowerCase() === 'mountain' || name.toLowerCase() === 'forest' || name.toLowerCase() === 'plains';
+        const res = await axios.get(`${API_BASE}/cards/search?q=${encodeURIComponent(name)}${isExact ? '&exact=true' : ''}`);
         if (res.data && res.data.length > 0 && selectedDeck) {
             const card = res.data[0];
             await axios.post(`${API_BASE}/collection/add`, { oracle_id: card.oracle_id, name: card.name });

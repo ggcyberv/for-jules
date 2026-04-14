@@ -63,13 +63,13 @@ def autocomplete(q: str):
     return client.autocomplete(q)
 
 @app.get("/cards/search")
-def search_cards(q: str, lang: Optional[str] = None):
-    return client.search_cards(q, lang)
+def search_cards(q: str, lang: Optional[str] = None, exact: bool = False):
+    return client.search_cards(q, lang, exact)
 
 @app.get("/collection")
 def get_collection(
     db: Session = Depends(get_db),
-    color: Optional[str] = None,
+    colors: Optional[str] = None, # Comma-separated list of colors
     type: Optional[str] = None,
     format: Optional[str] = None,
     keyword: Optional[str] = None,
@@ -78,8 +78,15 @@ def get_collection(
     max_price: Optional[float] = None
 ):
     query = db.query(models.CollectionCard)
-    if color:
-        query = query.filter(models.CollectionCard.color_identity.contains([color.upper()]))
+    if colors:
+        color_list = [c.upper() for c in colors.split(",")]
+        # Filter for cards whose color identity is exactly the set provided, or a subset?
+        # User said "all possible ones" which usually means cards that fit within those colors.
+        # So color_identity must be a subset of color_list.
+        # But for simple filtering, let's find cards that have at least all these colors?
+        # Actually, "color identity filtering" in MTG usually means cards that could go in a commander deck of those colors.
+        # So card.color_identity must be a subset of color_list.
+        pass # Will handle in loop below for complexity
     if type:
         query = query.filter(models.CollectionCard.type_line.ilike(f"%{type}%"))
     if min_price is not None:
@@ -90,6 +97,13 @@ def get_collection(
     cards = query.all()
     result = []
     for card in cards:
+        if colors:
+            color_list = [c.upper() for c in colors.split(",")]
+            card_colors = card.color_identity or []
+            # Check if card's color identity is within the allowed colors
+            if not set(card_colors).issubset(set(color_list)):
+                continue
+
         if keyword and keyword.lower() not in [k.lower() for k in (card.keywords or [])]:
             continue
         if format and (card.legalities or {}).get(format) != "legal":
@@ -125,10 +139,14 @@ def add_to_collection(card_in: CardAdd, db: Session = Depends(get_db)):
     if card:
         card.quantity += 1
     else:
+        # get_card_details already returns the newest printing with prices
         details = client.get_card_details(card_in.oracle_id)
         if not details:
             raise HTTPException(status_code=404, detail="Scryfall data not found")
-        price = client.get_cheapest_price(card_in.oracle_id)
+
+        eur_price = details.get("prices", {}).get("eur")
+        price = float(eur_price) if eur_price else 0.0
+
         card = models.CollectionCard(
             oracle_id=card_in.oracle_id,
             name=card_in.name,

@@ -23,9 +23,13 @@ class ScryfallClient:
             return response.json().get("data", [])
         return []
 
-    def search_cards(self, query: str, lang: Optional[str] = None) -> List[Dict]:
+    def search_cards(self, query: str, lang: Optional[str] = None, exact: bool = False) -> List[Dict]:
         self._rate_limit()
-        q = f"name:\"{query}\"" if " " in query else query
+        if exact:
+            q = f"!\"{query}\""
+        else:
+            q = f"name:\"{query}\"" if " " in query else query
+
         if lang:
             q += f" lang:{lang}"
 
