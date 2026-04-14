@@ -68,6 +68,8 @@ const CardDisplay = ({ card, mode, onAdd, onRemove, onAddTag, onRemoveTag, deckA
     onRemoveFromDeck?: (id: string, cat: string) => void,
     category?: string
 }) => {
+    const details = card.details || {};
+
     if (mode === 'list') {
         return (
             <div className="flex justify-between items-center bg-slate-800/50 p-2 rounded border border-slate-700 hover:border-slate-500 transition group h-10">
@@ -76,7 +78,7 @@ const CardDisplay = ({ card, mode, onAdd, onRemove, onAddTag, onRemoveTag, deckA
                     <span className="font-medium text-xs text-white truncate">{card.name}</span>
                 </div>
                 <div className="flex items-center gap-2 shrink-0">
-                    <span className="text-slate-500 font-mono text-[10px]">{card.details.mana_cost}</span>
+                    <span className="text-slate-500 font-mono text-[10px]">{details.mana_cost}</span>
                     {onRemoveFromDeck && <button onClick={() => onRemoveFromDeck(card.oracle_id, category!)} className="text-slate-600 hover:text-rose-500 opacity-0 group-hover:opacity-100 transition"><X size={12} /></button>}
                 </div>
             </div>
@@ -90,9 +92,9 @@ const CardDisplay = ({ card, mode, onAdd, onRemove, onAddTag, onRemoveTag, deckA
                     <div className="flex-1">
                         <div className="flex items-center gap-2">
                             <h3 className="font-bold text-indigo-400 leading-tight">{card.name}</h3>
-                            <span className="text-slate-500 text-xs font-mono">{card.details.mana_cost}</span>
+                            <span className="text-slate-500 text-xs font-mono">{details.mana_cost}</span>
                         </div>
-                        <div className="text-[10px] text-slate-500 uppercase font-bold mt-0.5">{card.details.type_line}</div>
+                        <div className="text-[10px] text-slate-500 uppercase font-bold mt-0.5">{details.type_line}</div>
                     </div>
                     <div className="text-right shrink-0">
                         <div className="text-[10px] text-slate-500 uppercase">Qty</div>
@@ -100,8 +102,8 @@ const CardDisplay = ({ card, mode, onAdd, onRemove, onAddTag, onRemoveTag, deckA
                     </div>
                 </div>
 
-                <div className="text-xs text-slate-300 line-clamp-3 bg-slate-900/50 p-2 rounded italic border border-slate-700/30 flex-1">
-                    {card.details.oracle_text || 'No functional text.'}
+                <div className="text-xs text-slate-300 line-clamp-3 bg-slate-900/50 p-2 rounded italic border border-slate-700/30 flex-1 whitespace-pre-wrap">
+                    {details.oracle_text || 'No functional text.'}
                 </div>
 
                 <div className="flex justify-between items-end">
@@ -110,8 +112,8 @@ const CardDisplay = ({ card, mode, onAdd, onRemove, onAddTag, onRemoveTag, deckA
                         {card.decks?.map((d: string) => <span key={d} className="text-[9px] bg-indigo-900/50 text-indigo-300 px-1.5 py-0.5 rounded border border-indigo-500/30">D: {d}</span>)}
                     </div>
                     <div className="text-right">
-                        {card.details.power && <div className="text-xs font-bold text-white bg-slate-700 px-2 py-0.5 rounded border border-slate-600">{card.details.power}/{card.details.toughness}</div>}
-                        {card.details.loyalty && <div className="text-xs font-bold text-orange-400 bg-orange-950/30 px-2 py-0.5 rounded border border-orange-900/50">[{card.details.loyalty}]</div>}
+                        {details.power && <div className="text-xs font-bold text-white bg-slate-700 px-2 py-0.5 rounded border border-slate-600">{details.power}/{details.toughness}</div>}
+                        {details.loyalty && <div className="text-xs font-bold text-orange-400 bg-orange-950/30 px-2 py-0.5 rounded border border-orange-900/50">[{details.loyalty}]</div>}
                     </div>
                 </div>
 
@@ -142,7 +144,7 @@ const CardDisplay = ({ card, mode, onAdd, onRemove, onAddTag, onRemoveTag, deckA
     return (
         <div className="bg-slate-800 rounded-xl overflow-hidden border border-slate-700 shadow-lg group transition hover:border-indigo-500 flex flex-col">
             <div className="relative aspect-[1/1.4]">
-                <img src={card.details.image_uris?.normal} alt={card.name} className="w-full h-full object-cover" />
+                <img src={details.image_uris?.normal} alt={card.name} className="w-full h-full object-cover" />
                 {card.decks?.length > 0 && (
                     <div className="absolute top-2 left-2 flex flex-wrap gap-1 max-w-[80%] pointer-events-none">
                         {card.decks.map((d: string) => <span key={d} className="bg-indigo-600 text-white text-[8px] font-bold px-1.5 py-0.5 rounded shadow-lg border border-indigo-400 uppercase">In: {d}</span>)}

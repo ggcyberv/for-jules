@@ -1,7 +1,7 @@
 from fastapi import FastAPI, Depends, HTTPException, Body
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
-from typing import List, Optional, Dict
+from typing import List, Optional, Dict, Any
 import datetime
 from pydantic import BaseModel
 import re
@@ -29,7 +29,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Pydantic models for request bodies
 class CardAdd(BaseModel):
     oracle_id: str
     name: str
@@ -66,6 +65,14 @@ def get_db():
     finally:
         db.close()
 
+def _save_to_api_cache(db: Session, key: str, data: Any):
+    cached = db.query(models.APICache).filter(models.APICache.query_key == key).first()
+    if cached:
+        cached.response_json = data
+        cached.timestamp = datetime.datetime.utcnow()
+    else:
+        db.add(models.APICache(query_key=key, response_json=data))
+
 @app.get("/cards/autocomplete")
 def autocomplete(q: str, db: Session = Depends(get_db)):
     cache_key = f"autocomplete:{q}"
@@ -74,11 +81,7 @@ def autocomplete(q: str, db: Session = Depends(get_db)):
         return cached.response_json
 
     res = client.autocomplete(q)
-    if cached:
-        cached.response_json = res
-        cached.timestamp = datetime.datetime.utcnow()
-    else:
-        db.add(models.APICache(query_key=cache_key, response_json=res))
+    _save_to_api_cache(db, cache_key, res)
     db.commit()
     return res
 
@@ -90,11 +93,7 @@ def search_cards(q: str, lang: Optional[str] = None, exact: bool = False, db: Se
         return cached.response_json
 
     res = client.search_cards(q, lang, exact)
-    if cached:
-        cached.response_json = res
-        cached.timestamp = datetime.datetime.utcnow()
-    else:
-        db.add(models.APICache(query_key=cache_key, response_json=res))
+    _save_to_api_cache(db, cache_key, res)
     db.commit()
     return res
 
@@ -110,10 +109,13 @@ def get_collection(
     min_price: Optional[float] = None,
     max_price: Optional[float] = None,
     tag: Optional[str] = None,
+    include_zero: bool = False,
     limit: int = 20,
     offset: int = 0
 ):
     query = db.query(models.CollectionCard)
+    if not include_zero:
+        query = query.filter(models.CollectionCard.quantity > 0)
     if type:
         query = query.filter(models.CollectionCard.type_line.ilike(f"%{type}%"))
     if min_price is not None:
@@ -137,7 +139,16 @@ def get_collection(
         if keyword and keyword.lower() not in [k.lower() for k in (card.keywords or [])]: continue
         if format and (card.legalities or {}).get(format) != "legal": continue
         if set_code:
-            if not client.search_cards(f"oracle_id:{card.oracle_id} set:{set_code}"): continue
+            # This is slow, but we'll try to use cache
+            cache_key = f"search:oracle_id:{card.oracle_id} set:{set_code}:None:False"
+            cached = db.query(models.APICache).filter(models.APICache.query_key == cache_key).first()
+            if cached and (datetime.datetime.utcnow() - cached.timestamp).total_seconds() < 86400:
+                if not cached.response_json: continue
+            else:
+                res = client.search_cards(f"oracle_id:{card.oracle_id} set:{set_code}")
+                _save_to_api_cache(db, cache_key, res)
+                db.commit()
+                if not res: continue
 
         decks = [dc.deck.name for dc in card.deck_cards]
         filtered_cards.append({
@@ -153,6 +164,7 @@ def get_collection(
                 "loyalty": card.loyalty,
                 "image_uris": {"normal": card.image_url},
                 "prices": {"eur": str(card.price_eur)},
+                "colors": card.colors,
                 "color_identity": card.color_identity,
                 "legalities": card.legalities,
                 "keywords": card.keywords
@@ -164,15 +176,18 @@ def get_collection(
     paginated = filtered_cards[offset:offset+limit]
     return {"items": paginated, "total": len(filtered_cards), "has_more": offset + limit < len(filtered_cards)}
 
-def _add_to_collection_internal(oracle_id: str, name: str, db: Session, quantity: int = 1):
+def _add_to_collection_internal(oracle_id: str, name: str, db: Session, quantity: int = 1, card_data: Dict = None):
     card = db.query(models.CollectionCard).filter(models.CollectionCard.oracle_id == oracle_id).first()
     if card:
         card.quantity += quantity
     else:
-        details = client.get_card_details(oracle_id)
+        details = card_data or client.get_card_details(oracle_id)
         if not details: return None
-        eur_price = details.get("prices", {}).get("eur")
+        # Handle if details is from a search result which might have different keys
+        prices = details.get("prices", {})
+        eur_price = prices.get("eur") or prices.get("eur_foil")
         price = float(eur_price) if eur_price else 0.0
+
         card = models.CollectionCard(
             oracle_id=oracle_id, name=name, quantity=quantity,
             type_line=details.get("type_line"), mana_cost=details.get("mana_cost"),
@@ -198,8 +213,7 @@ def add_to_collection(card_in: CardAdd, db: Session = Depends(get_db)):
 def remove_from_collection(card_in: CardRemove, db: Session = Depends(get_db)):
     card = db.query(models.CollectionCard).filter(models.CollectionCard.oracle_id == card_in.oracle_id).first()
     if card:
-        if card.quantity > 1: card.quantity -= 1
-        else: db.delete(card)
+        if card.quantity > 0: card.quantity -= 1
         db.commit()
         return {"status": "success"}
     raise HTTPException(status_code=404)
@@ -209,19 +223,43 @@ def bulk_import(import_in: BulkImport, db: Session = Depends(get_db)):
     lines = import_in.list_text.strip().split('\n')
     added_count = 0
     for line in lines:
-        match = re.match(r'^(\d+)x?\s+(.+)$', line.strip())
+        line = line.strip()
+        if not line: continue
+        match = re.match(r'^(\d+)x?\s+([^(]+)(?:\s+\(.*\))?.*$', line)
         if match:
-            qty, name = int(match.group(1)), match.group(2).strip()
-            search_res = client.search_cards(name, exact=True) or client.search_cards(name)
-            if search_res:
-                card_data = search_res[0]
-                oracle_id, real_name = card_data['oracle_id'], card_data['name']
-                _add_to_collection_internal(oracle_id, real_name, db, qty)
-                if import_in.deck_id:
-                    deck_card = db.query(models.DeckCard).filter(models.DeckCard.deck_id == import_in.deck_id, models.DeckCard.oracle_id == oracle_id, models.DeckCard.category == "Main").first()
-                    if deck_card: deck_card.quantity += qty
-                    else: db.add(models.DeckCard(deck_id=import_in.deck_id, oracle_id=oracle_id, quantity=qty, category="Main"))
-                added_count += 1
+            qty = int(match.group(1))
+            name = match.group(2).strip()
+            name = re.sub(r'\s+\d+.*$', '', name).strip()
+
+            # 1. Check if we already have it in collection
+            existing = db.query(models.CollectionCard).filter(models.CollectionCard.name.ilike(name)).first()
+            if existing:
+                oracle_id = existing.oracle_id
+                _add_to_collection_internal(oracle_id, existing.name, db, qty)
+            else:
+                # 2. Check cache
+                cache_key = f"search:{name}:None:True"
+                cached = db.query(models.APICache).filter(models.APICache.query_key == cache_key).first()
+                if cached and (datetime.datetime.utcnow() - cached.timestamp).total_seconds() < 86400:
+                    search_res = cached.response_json
+                else:
+                    search_res = client.search_cards(name, exact=True) or client.search_cards(name)
+                    _save_to_api_cache(db, cache_key, search_res)
+
+                if search_res:
+                    card_data = search_res[0]
+                    oracle_id = card_data['oracle_id']
+                    _add_to_collection_internal(oracle_id, card_data['name'], db, qty, card_data)
+                    existing = db.query(models.CollectionCard).filter(models.CollectionCard.oracle_id == oracle_id).first()
+                else:
+                    continue
+
+            if import_in.deck_id and existing:
+                dc = db.query(models.DeckCard).filter(models.DeckCard.deck_id == import_in.deck_id, models.DeckCard.oracle_id == existing.oracle_id, models.DeckCard.category == "Main").first()
+                if dc: dc.quantity += qty
+                else: db.add(models.DeckCard(deck_id=import_in.deck_id, oracle_id=existing.oracle_id, quantity=qty, category="Main"))
+
+            added_count += 1
     db.commit()
     return {"status": "success", "added": added_count}
 
@@ -271,8 +309,7 @@ def rename_deck(deck_id: int, rename_in: DeckRename, db: Session = Depends(get_d
     deck = db.query(models.Deck).filter(models.Deck.id == deck_id).first()
     if not deck: raise HTTPException(status_code=404)
     deck.name = rename_in.name
-    db.commit()
-    db.refresh(deck)
+    db.commit(); db.refresh(deck)
     return deck
 
 @app.post("/decks/{deck_id}/clone")
@@ -292,15 +329,25 @@ def get_deck(deck_id: int, db: Session = Depends(get_db)):
     if not deck: raise HTTPException(status_code=404)
     cards = []
     for dc in deck.cards:
-        cards.append({
-            "oracle_id": dc.oracle_id, "name": dc.card.name, "quantity": dc.quantity, "category": dc.category,
-            "details": {
-                "type_line": dc.card.type_line, "mana_cost": dc.card.mana_cost, "oracle_text": dc.card.oracle_text,
-                "power": dc.card.power, "toughness": dc.card.toughness, "loyalty": dc.card.loyalty,
-                "image_uris": {"normal": dc.card.image_url}, "prices": {"eur": str(dc.card.price_eur)},
-                "color_identity": dc.card.color_identity
-            }
-        })
+        if not dc.card:
+            details = client.get_card_details(dc.oracle_id)
+            if details:
+                 _add_to_collection_internal(dc.oracle_id, details['name'], db, 0, details)
+                 db.commit(); db.refresh(dc)
+
+        if dc.card:
+            other_decks = [d.deck.name for d in dc.card.deck_cards]
+            cards.append({
+                "oracle_id": dc.oracle_id, "name": dc.card.name, "quantity": dc.quantity, "category": dc.category,
+                "decks": list(set(other_decks)),
+                "tags": [t.name for t in dc.card.tags],
+                "details": {
+                    "type_line": dc.card.type_line, "mana_cost": dc.card.mana_cost, "oracle_text": dc.card.oracle_text,
+                    "power": dc.card.power, "toughness": dc.card.toughness, "loyalty": dc.card.loyalty,
+                    "image_uris": {"normal": dc.card.image_url}, "prices": {"eur": str(dc.card.price_eur)},
+                    "colors": dc.card.colors, "color_identity": dc.card.color_identity, "keywords": dc.card.keywords
+                }
+            })
     return {"id": deck.id, "name": deck.name, "description": deck.description, "cards": cards}
 
 @app.post("/decks/{deck_id}/add")

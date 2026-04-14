@@ -18,9 +18,12 @@ class ScryfallClient:
     def autocomplete(self, query: str) -> List[str]:
         self._rate_limit()
         params = {"q": query}
-        response = requests.get(f"{SCRYFALL_API_URL}/cards/autocomplete", params=params)
-        if response.status_code == 200:
-            return response.json().get("data", [])
+        try:
+            response = requests.get(f"{SCRYFALL_API_URL}/cards/autocomplete", params=params, timeout=5)
+            if response.status_code == 200:
+                return response.json().get("data", [])
+        except requests.exceptions.RequestException:
+            pass
         return []
 
     def search_cards(self, query: str, lang: Optional[str] = None, exact: bool = False) -> List[Dict]:
@@ -34,23 +37,39 @@ class ScryfallClient:
             q += f" lang:{lang}"
 
         params = {"q": q, "include_multilingual": "true"}
-        response = requests.get(f"{SCRYFALL_API_URL}/cards/search", params=params)
-        if response.status_code == 200:
-            return response.json().get("data", [])
+        try:
+            response = requests.get(f"{SCRYFALL_API_URL}/cards/search", params=params, timeout=10)
+            if response.status_code == 200:
+                return response.json().get("data", [])
+        except requests.exceptions.RequestException:
+            pass
         return []
 
     def get_card_details(self, oracle_id: str) -> Optional[Dict]:
         self._rate_limit()
+        # First try searching for newest printing
         params = {
             "q": f"oracle_id:{oracle_id} -is:digital",
             "order": "released",
             "dir": "desc"
         }
-        response = requests.get(f"{SCRYFALL_API_URL}/cards/search", params=params)
-        if response.status_code == 200:
-            data = response.json().get("data", [])
-            if data:
-                return data[0]
+        try:
+            response = requests.get(f"{SCRYFALL_API_URL}/cards/search", params=params, timeout=10)
+            if response.status_code == 200:
+                data = response.json().get("data", [])
+                if data:
+                    return data[0]
+
+            # If no digital-filtered result, try search without it
+            params["q"] = f"oracle_id:{oracle_id}"
+            response = requests.get(f"{SCRYFALL_API_URL}/cards/search", params=params, timeout=10)
+            if response.status_code == 200:
+                data = response.json().get("data", [])
+                if data:
+                    return data[0]
+        except requests.exceptions.RequestException:
+            pass
+
         return None
 
     def get_cheapest_price(self, oracle_id: str) -> float:
