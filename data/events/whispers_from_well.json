@@ -1,0 +1,21 @@
+{
+  "event_id": "whispers_from_well",
+  "title": "Whispers from the Well",
+  "description": "After camping here for several days, you begin to hear strange whispers coming from a nearby well. They seem to be speaking a long-forgotten language.",
+  "choices": [
+    {
+      "text": "Listen closely",
+      "outcome": {
+        "type": "message",
+        "text": "The whispers reveal a secret of the ancient realm."
+      }
+    },
+    {
+      "text": "Cover the well",
+      "outcome": {
+        "type": "message",
+        "text": "The whispers stop, but an eerie silence remains."
+      }
+    }
+  ]
+}

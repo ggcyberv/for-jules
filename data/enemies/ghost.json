@@ -1,0 +1,13 @@
+{
+    "name": "Ghostly Apparition",
+    "race": "Tiefling",
+    "backstory": "Hermit",
+    "level": 1,
+    "STR": 8,
+    "AGI": 12,
+    "CON": 8,
+    "PER": 12,
+    "INT": 14,
+    "CHA": 10,
+    "loot_gold": 15
+}

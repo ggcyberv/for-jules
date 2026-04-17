@@ -1,0 +1,16 @@
+{
+  "quest_id": "clear_crypt_01",
+  "title": "Cleanse the Ruins",
+  "description": "The Mayor of Riverfall wants you to clear the nearby Lost Crypt.",
+  "objectives": [
+    {
+      "description": "Clear the Lost Crypt",
+      "target_id": "dungeon_cleared_dungeon_0",
+      "target_count": 1
+    }
+  ],
+  "rewards": {
+    "gold": 200,
+    "xp": 50
+  }
+}

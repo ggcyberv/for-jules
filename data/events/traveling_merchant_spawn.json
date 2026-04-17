@@ -1,0 +1,21 @@
+{
+  "event_id": "traveling_merchant_spawn",
+  "title": "A Traveling Merchant",
+  "description": "A merchant caravan pulls up to your camp. 'Looking for rare wares, adventurers?'",
+  "choices": [
+    {
+      "text": "Trade with them",
+      "outcome": {
+        "type": "message",
+        "text": "The merchant shows you their collection of artifacts."
+      }
+    },
+    {
+      "text": "Politely decline",
+      "outcome": {
+        "type": "message",
+        "text": "They move along to the next settlement."
+      }
+    }
+  ]
+}

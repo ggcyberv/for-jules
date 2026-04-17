@@ -1,0 +1,128 @@
+from typing import Optional, Dict, Any, Tuple
+from world.hex_grid import HexGrid
+from party.party_manager import Party
+from world.faction_system import FactionSystem
+from world.dungeon_generator import DungeonMap
+from engine.quest_manager import QuestManager
+from engine.lore_manager import LoreManager
+from world.faction_system import NPCParty
+from dataclasses import dataclass, field
+from typing import List, Dict, Any, Tuple, Optional
+
+@dataclass
+class WorldFact:
+    fact_id: str
+    turn_recorded: int
+    actors: List[str]
+    description: str
+    data: Dict[str, Any] = field(default_factory=dict)
+
+class GameState:
+    _instance = None
+
+    def __new__(cls):
+        if cls._instance is None:
+            cls._instance = super(GameState, cls).__new__(cls)
+            cls._instance.world: Optional[HexGrid] = None
+            cls._instance.party: Optional[Party] = None
+            cls._instance.turn: int = 1
+            cls._instance.seed: int = 0
+            cls._instance.global_flags: Dict[str, Any] = {}
+            cls._instance.locations: Dict[str, Any] = {}
+            cls._instance.faction_system: Optional[FactionSystem] = None
+            cls._instance.active_dungeon: Optional[DungeonMap] = None
+            cls._instance.active_dungeon_id: Optional[str] = None
+            cls._instance.dungeon_pos: Tuple[int, int] = (0, 0)
+            cls._instance.quest_manager: Optional[QuestManager] = None
+            cls._instance.lore_manager: Optional[LoreManager] = None
+            cls._instance.ironman: bool = False
+            cls._instance.ap_spent_in_hex: int = 0
+            cls._instance.last_pos: Tuple[int, int] = (0, 0)
+            cls._instance.world_facts: List[WorldFact] = []
+            cls._instance.timed_events: List[Dict[str, Any]] = []
+            cls._instance.npc_parties: List[NPCParty] = []
+            cls._instance.current_weather: str = "Clear"
+            cls._instance.simulation: Any = None
+        return cls._instance
+
+    def initialize(self, world: HexGrid, party: Party, seed: int, locations: Dict[str, Any]):
+        self.world = world
+        self.party = party
+        self.seed = seed
+        self.turn = 1
+        self.global_flags = {}
+        self.locations = locations
+        self.faction_system = FactionSystem()
+        self.quest_manager = QuestManager()
+        self.lore_manager = LoreManager()
+
+        from engine.simulation import WorldSimulation
+        self.simulation = WorldSimulation()
+
+        self.active_dungeon = None
+        self.active_dungeon_id = None
+        self.ironman = False
+
+    def query_facts(self, actor_name: str = None, description_contains: str = None, turn_range: Tuple[int, int] = None) -> List[WorldFact]:
+        results = self.world_facts
+        if actor_name:
+            results = [f for f in results if actor_name in f.actors]
+        if description_contains:
+            results = [f for f in results if description_contains in f.description]
+        if turn_range:
+            results = [f for f in results if turn_range[0] <= f.turn_recorded <= turn_range[1]]
+        return results
+
+    def advance_turn(self):
+        self.turn += 1
+        # Randomize weather
+        import random
+        if random.random() < 0.2:
+            self.current_weather = random.choice(["Rainy", "Foggy", "Stormy", "Clear"])
+        if self.party:
+            self.party.rest()
+            if (self.party.q, self.party.r) != self.last_pos:
+                self.ap_spent_in_hex = 0
+                self.last_pos = (self.party.q, self.party.r)
+
+        # Update NPC Parties
+        for npc in self.npc_parties:
+            target = (self.party.q, self.party.r) if self.party else None
+            npc.update(self.world, target)
+
+    def compute_fov(self, radius: int = 5):
+        if not self.active_dungeon: return
+        for tile in self.active_dungeon.tiles.values():
+            tile.visible = False
+        cx, cy = self.dungeon_pos
+        for x in range(cx - radius, cx + radius + 1):
+            for y in range(cy - radius, cy + radius + 1):
+                dist = (x - cx)**2 + (y - cy)**2
+                if dist <= radius**2:
+                    tile = self.active_dungeon.get_tile(x, y)
+                    if tile:
+                        tile.visible = True
+                        tile.explored = True
+
+    def compute_overworld_visibility(self, radius: int = 3):
+        if not self.world or not self.party: return
+
+        # Check if party is at a watchtower for increased radius
+        current_tile = self.world.get_tile(self.party.q, self.party.r)
+        if current_tile and current_tile.poi_id:
+            loc = self.locations.get(current_tile.poi_id)
+            if hasattr(loc, 'vision_radius'):
+                radius = max(radius, loc.vision_radius)
+
+        # Reset visibility for all discovered tiles
+        for tile in self.world.tiles.values():
+            tile.visible = False
+
+        pq, pr = self.party.q, self.party.r
+        for dq in range(-radius, radius + 1):
+            for dr in range(max(-radius, -dq - radius), min(radius, -dq + radius) + 1):
+                nq, nr = pq + dq, pr + dr
+                tile = self.world.get_tile(nq, nr)
+                if tile:
+                    tile.visible = True
+                    tile.discovered = True
